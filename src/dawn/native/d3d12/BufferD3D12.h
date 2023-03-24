@@ -53,6 +53,11 @@ class Buffer final : public BufferBase {
     // Dawn API
     void SetLabelImpl() override;
 
+    MaybeError ClearBuffer(CommandRecordingContext* commandContext,
+                           uint8_t clearValue,
+                           uint64_t offset = 0,
+                           uint64_t size = 0);
+
   private:
     Buffer(Device* device, const BufferDescriptor* descriptor);
     ~Buffer() override;
@@ -68,10 +73,6 @@ class Buffer final : public BufferBase {
     MaybeError MapInternal(bool isWrite, size_t start, size_t end, const char* contextInfo);
 
     MaybeError InitializeToZero(CommandRecordingContext* commandContext);
-    MaybeError ClearBuffer(CommandRecordingContext* commandContext,
-                           uint8_t clearValue,
-                           uint64_t offset = 0,
-                           uint64_t size = 0);
 
     ResourceHeapAllocation mResourceAllocation;
     bool mFixedResourceState = false;

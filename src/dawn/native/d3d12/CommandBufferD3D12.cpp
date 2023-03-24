@@ -1021,16 +1021,9 @@ MaybeError CommandBuffer::RecordCommands(CommandRecordingContext* commandContext
                     // Skip no-op fills.
                     break;
                 }
-                Buffer* dstBuffer = ToBackend(cmd->buffer.Get());
 
-                bool clearedToZero;
-                DAWN_TRY_ASSIGN(clearedToZero, dstBuffer->EnsureDataInitializedAsDestination(
-                                                   commandContext, cmd->offset, cmd->size));
-
-                if (!clearedToZero) {
-                    DAWN_TRY(device->ClearBufferToZero(commandContext, cmd->buffer.Get(),
-                                                       cmd->offset, cmd->size));
-                }
+                DAWN_TRY(ToBackend(cmd->buffer.Get())
+                             ->ClearBuffer(commandContext, 0, cmd->offset, cmd->size));
 
                 break;
             }

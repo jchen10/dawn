@@ -251,7 +251,7 @@ if (WINDOWS_STORE)
     target_link_libraries(dawn_native PRIVATE debug dxgi.lib)
 endif()
 
-if (DAWN_ENABLE_D3D12)
+if (DAWN_ENABLE_D3D11 OR DAWN_ENABLE_D3D12)
     target_sources(dawn_native PRIVATE
         "d3d/AdapterD3D.cpp"
         "d3d/AdapterD3D.h"
@@ -272,6 +272,51 @@ if (DAWN_ENABLE_D3D12)
         "d3d/UtilsD3D.cpp"
         "d3d/UtilsD3D.h"
         "d3d/d3d_platform.h"
+    )
+endif()
+
+if (DAWN_ENABLE_D3D11)
+    target_sources(dawn_native PRIVATE
+        "${DAWN_INCLUDE_DIR}/dawn/native/D3D11Backend.h"
+        "d3d11/AdapterD3D11.cpp"
+        "d3d11/AdapterD3D11.h"
+        "d3d11/BackendD3D11.cpp"
+        "d3d11/BackendD3D11.h"
+        "d3d11/BindGroupD3D11.cpp"
+        "d3d11/BindGroupD3D11.h"
+        "d3d11/BindGroupLayoutD3D11.cpp"
+        "d3d11/BindGroupLayoutD3D11.h"
+        "d3d11/BufferD3D11.cpp"
+        "d3d11/BufferD3D11.h"
+        "d3d11/CommandBufferD3D11.cpp"
+        "d3d11/CommandBufferD3D11.h"
+        "d3d11/CommandRecordingContextD3D11.cpp"
+        "d3d11/CommandRecordingContextD3D11.h"
+        "d3d11/ComputePipelineD3D11.cpp"
+        "d3d11/ComputePipelineD3D11.h"
+        "d3d11/D3D11Backend.cpp"
+        "d3d11/D3D11Info.cpp"
+        "d3d11/D3D11Info.h"
+        "d3d11/DeviceD3D11.cpp"
+        "d3d11/DeviceD3D11.h"
+        "d3d11/PipelineLayoutD3D11.cpp"
+        "d3d11/PipelineLayoutD3D11.h"
+        "d3d11/PlatformFunctionsD3D11.cpp"
+        "d3d11/PlatformFunctionsD3D11.h"
+        "d3d11/QueueD3D11.cpp"
+        "d3d11/QueueD3D11.h"
+        "d3d11/RenderPipelineD3D11.cpp"
+        "d3d11/RenderPipelineD3D11.h"
+        "d3d11/SamplerD3D11.cpp"
+        "d3d11/SamplerD3D11.h"
+        "d3d11/ShaderModuleD3D11.cpp"
+        "d3d11/ShaderModuleD3D11.h"
+        "d3d11/SwapChainD3D11.cpp"
+        "d3d11/SwapChainD3D11.h"
+        "d3d11/TextureD3D11.cpp"
+        "d3d11/TextureD3D11.h"
+        "d3d11/UtilsD3D11.cpp"
+        "d3d11/UtilsD3D11.h"
     )
 endif()
 

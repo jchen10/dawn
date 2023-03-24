@@ -553,6 +553,7 @@ TEST_P(BufferMappingTests, RegressChromium1421170) {
 }
 
 DAWN_INSTANTIATE_TEST(BufferMappingTests,
+                      D3D11Backend(),
                       D3D12Backend(),
                       MetalBackend(),
                       OpenGLBackend(),
@@ -637,36 +638,54 @@ TEST_P(BufferMappingCallbackTests, UseTheBufferAndThenMap) {
     MapAsyncAndWait(buffer, wgpu::MapMode::Write, 0, wgpu::kWholeMapSize);
     buffer.Unmap();
 
-    std::vector<bool> done = {false, false};
+    struct UserData {
+        bool isD3d11;
+        std::vector<bool> done = {false, false};
+    } userData;
+    userData.isD3d11 = IsD3D11();
 
     // 1. Submit a command buffer which uses the buffer
     SubmitCommandBuffer(buffer);
     queue.OnSubmittedWorkDone(
         0,
-        [](WGPUQueueWorkDoneStatus status, void* userdata) {
+        [](WGPUQueueWorkDoneStatus status, void* data) {
             EXPECT_EQ(status, WGPUQueueWorkDoneStatus_Success);
-            auto& done = *static_cast<std::vector<bool>*>(userdata);
-            done[0] = true;
-            // This callback should be called first
-            const std::vector<bool> kExpected = {true, false};
-            EXPECT_EQ(done, kExpected);
+            auto* userData = static_cast<UserData*>(data);
+            userData->done[0] = true;
+            if (userData->isD3d11) {
+                // D3D11 uses system memory for buffers, so the buffer will be available immediately
+                // after step 1.
+                const std::vector<bool> kExpected = {true, true};
+                EXPECT_EQ(userData->done, kExpected);
+            } else {
+                // The buffer is used by step 1, so this callback is called second.
+                const std::vector<bool> kExpected = {true, false};
+                EXPECT_EQ(userData->done, kExpected);
+            }
         },
-        &done);
+        &userData);
 
     // 2.
     buffer.MapAsync(
         wgpu::MapMode::Write, 0, wgpu::kWholeMapSize,
-        [](WGPUBufferMapAsyncStatus status, void* userdata) {
+        [](WGPUBufferMapAsyncStatus status, void* data) {
             EXPECT_EQ(status, WGPUBufferMapAsyncStatus_Success);
-            auto& done = *static_cast<std::vector<bool>*>(userdata);
-            done[1] = true;
-            // The buffer is used by step 1, so this callback is called second.
-            const std::vector<bool> kExpected = {true, true};
-            EXPECT_EQ(done, kExpected);
+            auto* userData = static_cast<UserData*>(data);
+            userData->done[1] = true;
+            if (userData->isD3d11) {
+                // D3D11 uses system memory for buffers, so the buffer will be available immediately
+                // after step 1.
+                const std::vector<bool> kExpected = {false, true};
+                EXPECT_EQ(userData->done, kExpected);
+            } else {
+                // The buffer is used by step 1, so this callback is called second.
+                const std::vector<bool> kExpected = {true, true};
+                EXPECT_EQ(userData->done, kExpected);
+            }
         },
-        &done);
+        &userData);
 
-    Wait(done);
+    Wait(userData.done);
 
     buffer.Unmap();
 }
@@ -676,44 +695,67 @@ TEST_P(BufferMappingCallbackTests, EmptySubmissionWriteAndThenMap) {
     MapAsyncAndWait(buffer, wgpu::MapMode::Read, 0, wgpu::kWholeMapSize);
     buffer.Unmap();
 
-    std::vector<bool> done = {false, false};
+    struct UserData {
+        bool isD3d11;
+        std::vector<bool> done = {false, false};
+    } userData;
+    userData.isD3d11 = IsD3D11();
 
     // 1. submission without using buffer.
     SubmitCommandBuffer({});
     queue.OnSubmittedWorkDone(
         0,
-        [](WGPUQueueWorkDoneStatus status, void* userdata) {
+        [](WGPUQueueWorkDoneStatus status, void* data) {
             EXPECT_EQ(status, WGPUQueueWorkDoneStatus_Success);
-            auto& done = *static_cast<std::vector<bool>*>(userdata);
-            done[0] = true;
-            // Step 2 callback should be called first, this is the second.
-            const std::vector<bool> kExpected = {true, false};
-            EXPECT_EQ(done, kExpected);
+            auto* userData = static_cast<UserData*>(data);
+            userData->done[0] = true;
+            if (userData->isD3d11) {
+                // D3D11 uses system memory for buffers, so the buffer will be available immediately
+                // after queue.WriteBuffer() call.
+                const std::vector<bool> kExpected = {true, true};
+                EXPECT_EQ(userData->done, kExpected);
+            } else {
+                // The buffer is used by step 2 (queue.WriteBuffer()), so this callback is called
+                // first.
+                const std::vector<bool> kExpected = {true, false};
+                EXPECT_EQ(userData->done, kExpected);
+            }
         },
-        &done);
-
-    int32_t data = 0x12345678;
-    queue.WriteBuffer(buffer, 0, &data, sizeof(data));
+        &userData);
 
     // 2.
+    int32_t data = 0x12345678;
+    queue.WriteBuffer(buffer, 0, &data, sizeof(data));
     buffer.MapAsync(
         wgpu::MapMode::Read, 0, wgpu::kWholeMapSize,
-        [](WGPUBufferMapAsyncStatus status, void* userdata) {
+        [](WGPUBufferMapAsyncStatus status, void* data) {
             EXPECT_EQ(status, WGPUBufferMapAsyncStatus_Success);
-            auto& done = *static_cast<std::vector<bool>*>(userdata);
-            done[1] = true;
-            // The buffer is not used by step 1, so this callback is called first.
-            const std::vector<bool> kExpected = {true, true};
-            EXPECT_EQ(done, kExpected);
+            auto* userData = static_cast<UserData*>(data);
+            userData->done[1] = true;
+            if (userData->isD3d11) {
+                // D3D11 uses system memory for buffers, so the buffer will be available immediately
+                // after queue.WriteBuffer() call.
+                const std::vector<bool> kExpected = {false, true};
+                EXPECT_EQ(userData->done, kExpected);
+            } else {
+                // The buffer is used by step 2 (queue.WriteBuffer()), so this callback is called
+                // second.
+                const std::vector<bool> kExpected = {true, true};
+                EXPECT_EQ(userData->done, kExpected);
+            }
         },
-        &done);
+        &userData);
 
-    Wait(done);
+    Wait(userData.done);
 
     buffer.Unmap();
 }
 
-DAWN_INSTANTIATE_TEST(BufferMappingCallbackTests, D3D12Backend(), MetalBackend(), VulkanBackend());
+DAWN_INSTANTIATE_TEST(BufferMappingCallbackTests,
+                      D3D11Backend(),
+                      D3D12Backend(),
+                      MetalBackend(),
+                      VulkanBackend());
 
 class BufferMappedAtCreationTests : public DawnTest {
   protected:
@@ -961,6 +1003,7 @@ TEST_P(BufferMappedAtCreationTests, GetMappedRangeZeroSized) {
 }
 
 DAWN_INSTANTIATE_TEST(BufferMappedAtCreationTests,
+                      D3D11Backend(),
                       D3D12Backend(),
                       D3D12Backend({}, {"use_d3d12_resource_heap_tier2"}),
                       MetalBackend(),
@@ -1108,6 +1151,7 @@ TEST_P(BufferTests, CreateBufferOOMMapAsync) {
 }
 
 DAWN_INSTANTIATE_TEST(BufferTests,
+                      D3D11Backend(),
                       D3D12Backend(),
                       MetalBackend(),
                       OpenGLBackend(),
@@ -1140,6 +1184,7 @@ TEST_P(BufferNoSuballocationTests, WriteBufferThenDestroy) {
 }
 
 DAWN_INSTANTIATE_TEST(BufferNoSuballocationTests,
+                      D3D11Backend({"disable_resource_suballocation"}),
                       D3D12Backend({"disable_resource_suballocation"}),
                       MetalBackend({"disable_resource_suballocation"}),
                       OpenGLBackend({"disable_resource_suballocation"}),

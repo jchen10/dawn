@@ -170,7 +170,6 @@ TEST_P(BindGroupTests, ReusedUBO) {
         struct VertexUniformBuffer {
             transform : vec4f
         }
-
         @group(0) @binding(0) var <uniform> vertexUbo : VertexUniformBuffer;
 
         @vertex
@@ -190,7 +189,8 @@ TEST_P(BindGroupTests, ReusedUBO) {
         }
         @group(0) @binding(1) var <uniform> fragmentUbo : FragmentUniformBuffer;
 
-        @fragment fn main() -> @location(0) vec4f {
+        @fragment
+        fn main() -> @location(0) vec4f {
             return fragmentUbo.color;
         })");
 
@@ -203,20 +203,17 @@ TEST_P(BindGroupTests, ReusedUBO) {
 
     struct Data {
         float transform[8];
-        char padding[256 - 8 * sizeof(float)];
+        char padding[256 - sizeof(transform)];
         float color[4];
     };
-    ASSERT(offsetof(Data, color) == 256);
-    Data data{
-        {1.f, 0.f, 0.f, 1.0f},
-        {0},
-        {0.f, 1.f, 0.f, 1.f},
-    };
+    Data data{{1.f, 0.f, 0.f, 1.0f}, {0}, {0.f, 1.f, 0.f, 1.f}};
     wgpu::Buffer buffer =
         utils::CreateBufferFromData(device, &data, sizeof(data), wgpu::BufferUsage::Uniform);
-    wgpu::BindGroup bindGroup = utils::MakeBindGroup(
-        device, pipeline.GetBindGroupLayout(0),
-        {{0, buffer, 0, sizeof(Data::transform)}, {1, buffer, 256, sizeof(Data::color)}});
+
+    wgpu::BindGroup bindGroup =
+        utils::MakeBindGroup(device, pipeline.GetBindGroupLayout(0),
+                             {{0, buffer, offsetof(Data, transform), sizeof(Data::transform)},
+                              {1, buffer, offsetof(Data, color), sizeof(Data::color)}});
 
     wgpu::CommandEncoder encoder = device.CreateCommandEncoder();
     wgpu::RenderPassEncoder pass = encoder.BeginRenderPass(&renderPass.renderPassInfo);
@@ -344,6 +341,8 @@ TEST_P(BindGroupTests, UBOSamplerAndTexture) {
 }
 
 TEST_P(BindGroupTests, MultipleBindLayouts) {
+    // D3D11 only supports one group.
+    DAWN_SUPPRESS_TEST_IF(IsD3D11());
     utils::BasicRenderPass renderPass = utils::CreateBasicRenderPass(device, kRTSize, kRTSize);
 
     wgpu::ShaderModule vsModule = utils::CreateShaderModule(device, R"(
@@ -553,6 +552,9 @@ TEST_P(BindGroupTests, MultipleEntryPointsWithMultipleNonZeroGroups) {
 // This test reproduces an out-of-bound bug on D3D12 backends when calling draw command twice with
 // one pipeline that has 4 bind group sets in one render pass.
 TEST_P(BindGroupTests, DrawTwiceInSamePipelineWithFourBindGroupSets) {
+    // D3D11 only supports one bind group.
+    DAWN_SUPPRESS_TEST_IF(IsD3D11());
+
     utils::BasicRenderPass renderPass = utils::CreateBasicRenderPass(device, kRTSize, kRTSize);
 
     wgpu::BindGroupLayout layout = utils::MakeBindGroupLayout(
@@ -643,6 +645,9 @@ TEST_P(BindGroupTests, SetBindGroupBeforePipeline) {
 
 // Test that dynamic bind groups can be set before the pipeline.
 TEST_P(BindGroupTests, SetDynamicBindGroupBeforePipeline) {
+    // D3D11 only supports one bind group and doesn't support dynamic buffers.
+    DAWN_SUPPRESS_TEST_IF(IsD3D11());
+
     utils::BasicRenderPass renderPass = utils::CreateBasicRenderPass(device, kRTSize, kRTSize);
 
     // Create a bind group layout which uses a single dynamic uniform buffer.
@@ -704,6 +709,9 @@ TEST_P(BindGroupTests, SetDynamicBindGroupBeforePipeline) {
 
 // Test that bind groups set for one pipeline are still set when the pipeline changes.
 TEST_P(BindGroupTests, BindGroupsPersistAfterPipelineChange) {
+    // D3D11 only supports one bind group.
+    DAWN_SUPPRESS_TEST_IF(IsD3D11());
+
     utils::BasicRenderPass renderPass = utils::CreateBasicRenderPass(device, kRTSize, kRTSize);
 
     // Create a bind group layout which uses a single dynamic uniform buffer.
@@ -784,6 +792,8 @@ TEST_P(BindGroupTests, BindGroupsPersistAfterPipelineChange) {
 TEST_P(BindGroupTests, DrawThenChangePipelineAndBindGroup) {
     // TODO(anglebug.com/3032): fix failure in ANGLE/D3D11
     DAWN_SUPPRESS_TEST_IF(IsANGLE() && IsWindows());
+    // D3D11 only supports one bind group and doesn't support dynamic buffers.
+    DAWN_SUPPRESS_TEST_IF(IsD3D11());
 
     utils::BasicRenderPass renderPass = utils::CreateBasicRenderPass(device, kRTSize, kRTSize);
 
@@ -890,6 +900,9 @@ TEST_P(BindGroupTests, DrawThenChangePipelineAndBindGroup) {
 // Test for crbug.com/dawn/1049, where setting a pipeline without drawing can prevent
 // bind groups from being applied later
 TEST_P(BindGroupTests, DrawThenChangePipelineTwiceAndBindGroup) {
+    // D3D11 only supports one bind group and doesn't support dynamic buffers.
+    DAWN_SUPPRESS_TEST_IF(IsD3D11());
+
     utils::BasicRenderPass renderPass = utils::CreateBasicRenderPass(device, kRTSize, kRTSize);
 
     // Create a bind group layout which uses a single dynamic uniform buffer.
@@ -992,6 +1005,9 @@ TEST_P(BindGroupTests, DrawThenChangePipelineTwiceAndBindGroup) {
 // Regression test for crbug.com/dawn/408 where dynamic offsets were applied in the wrong order.
 // Dynamic offsets should be applied in increasing order of binding number.
 TEST_P(BindGroupTests, DynamicOffsetOrder) {
+    // D3D11 doesn't support partial updates of dynamic uniform buffers.
+    DAWN_SUPPRESS_TEST_IF(IsD3D11());
+
     // We will put the following values and the respective offsets into a buffer.
     // The test will ensure that the correct dynamic offset is applied to each buffer by reading the
     // value from an offset binding.
@@ -1507,6 +1523,7 @@ TEST_P(BindGroupTests, CreateWithDestroyedResource) {
 }
 
 DAWN_INSTANTIATE_TEST(BindGroupTests,
+                      D3D11Backend(),
                       D3D12Backend(),
                       MetalBackend(),
                       OpenGLBackend(),
