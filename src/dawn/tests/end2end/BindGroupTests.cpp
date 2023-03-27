@@ -341,8 +341,6 @@ TEST_P(BindGroupTests, UBOSamplerAndTexture) {
 }
 
 TEST_P(BindGroupTests, MultipleBindLayouts) {
-    // D3D11 only supports one group.
-    DAWN_SUPPRESS_TEST_IF(IsD3D11());
     utils::BasicRenderPass renderPass = utils::CreateBasicRenderPass(device, kRTSize, kRTSize);
 
     wgpu::ShaderModule vsModule = utils::CreateShaderModule(device, R"(
@@ -552,9 +550,6 @@ TEST_P(BindGroupTests, MultipleEntryPointsWithMultipleNonZeroGroups) {
 // This test reproduces an out-of-bound bug on D3D12 backends when calling draw command twice with
 // one pipeline that has 4 bind group sets in one render pass.
 TEST_P(BindGroupTests, DrawTwiceInSamePipelineWithFourBindGroupSets) {
-    // D3D11 only supports one bind group.
-    DAWN_SUPPRESS_TEST_IF(IsD3D11());
-
     utils::BasicRenderPass renderPass = utils::CreateBasicRenderPass(device, kRTSize, kRTSize);
 
     wgpu::BindGroupLayout layout = utils::MakeBindGroupLayout(
@@ -645,9 +640,6 @@ TEST_P(BindGroupTests, SetBindGroupBeforePipeline) {
 
 // Test that dynamic bind groups can be set before the pipeline.
 TEST_P(BindGroupTests, SetDynamicBindGroupBeforePipeline) {
-    // D3D11 only supports one bind group and doesn't support dynamic buffers.
-    DAWN_SUPPRESS_TEST_IF(IsD3D11());
-
     utils::BasicRenderPass renderPass = utils::CreateBasicRenderPass(device, kRTSize, kRTSize);
 
     // Create a bind group layout which uses a single dynamic uniform buffer.
@@ -709,9 +701,6 @@ TEST_P(BindGroupTests, SetDynamicBindGroupBeforePipeline) {
 
 // Test that bind groups set for one pipeline are still set when the pipeline changes.
 TEST_P(BindGroupTests, BindGroupsPersistAfterPipelineChange) {
-    // D3D11 only supports one bind group.
-    DAWN_SUPPRESS_TEST_IF(IsD3D11());
-
     utils::BasicRenderPass renderPass = utils::CreateBasicRenderPass(device, kRTSize, kRTSize);
 
     // Create a bind group layout which uses a single dynamic uniform buffer.
@@ -792,8 +781,6 @@ TEST_P(BindGroupTests, BindGroupsPersistAfterPipelineChange) {
 TEST_P(BindGroupTests, DrawThenChangePipelineAndBindGroup) {
     // TODO(anglebug.com/3032): fix failure in ANGLE/D3D11
     DAWN_SUPPRESS_TEST_IF(IsANGLE() && IsWindows());
-    // D3D11 only supports one bind group and doesn't support dynamic buffers.
-    DAWN_SUPPRESS_TEST_IF(IsD3D11());
 
     utils::BasicRenderPass renderPass = utils::CreateBasicRenderPass(device, kRTSize, kRTSize);
 
@@ -900,9 +887,6 @@ TEST_P(BindGroupTests, DrawThenChangePipelineAndBindGroup) {
 // Test for crbug.com/dawn/1049, where setting a pipeline without drawing can prevent
 // bind groups from being applied later
 TEST_P(BindGroupTests, DrawThenChangePipelineTwiceAndBindGroup) {
-    // D3D11 only supports one bind group and doesn't support dynamic buffers.
-    DAWN_SUPPRESS_TEST_IF(IsD3D11());
-
     utils::BasicRenderPass renderPass = utils::CreateBasicRenderPass(device, kRTSize, kRTSize);
 
     // Create a bind group layout which uses a single dynamic uniform buffer.

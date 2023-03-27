@@ -116,16 +116,11 @@ ResultOrError<d3d::CompiledShader> ShaderModule::Compile(
         const auto& indices = layout->GetBindingIndexInfo()[group];
         const auto& groupBindingInfo = moduleBindingInfo[group];
 
-        // d3d12::BindGroupLayout packs the bindings per HLSL register-space. We modify
-        // the Tint AST to make the "bindings" decoration match the offset chosen by
-        // d3d12::BindGroupLayout so that Tint produces HLSL with the correct registers
-        // assigned to each interface variable.
         for (const auto& [binding, bindingInfo] : groupBindingInfo) {
             BindingIndex bindingIndex = groupLayout->GetBindingIndex(binding);
             tint::writer::BindingPoint srcBindingPoint{static_cast<uint32_t>(group),
                                                        static_cast<uint32_t>(binding)};
-            tint::writer::BindingPoint dstBindingPoint{static_cast<uint32_t>(group),
-                                                       indices[bindingIndex]};
+            tint::writer::BindingPoint dstBindingPoint{0u, indices[bindingIndex]};
             if (srcBindingPoint != dstBindingPoint) {
                 bindingRemapper.binding_points.emplace(srcBindingPoint, dstBindingPoint);
             }
@@ -166,7 +161,7 @@ ResultOrError<d3d::CompiledShader> ShaderModule::Compile(
     DAWN_TRY_LOAD_OR_RUN(compiledShader, device, std::move(req), d3d::CompiledShader::FromBlob,
                          d3d::CompileShader);
 
-    if (device->IsToggleEnabled(Toggle::DumpShaders)) {
+    if (req.hlsl.dumpShaders) {
         d3d::DumpCompiledShader(device, *compiledShader, compileFlags);
     }
 

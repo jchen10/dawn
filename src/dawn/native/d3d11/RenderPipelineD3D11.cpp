@@ -16,6 +16,7 @@
 
 #include <d3dcompiler.h>
 
+#include <array>
 #include <memory>
 #include <utility>
 
@@ -139,6 +140,73 @@ D3D11_CULL_MODE D3DCullMode(wgpu::CullMode cullMode) {
     }
 }
 
+D3D11_BLEND D3DBlendFactor(wgpu::BlendFactor blendFactor) {
+    switch (blendFactor) {
+        case wgpu::BlendFactor::Zero:
+            return D3D11_BLEND_ZERO;
+        case wgpu::BlendFactor::One:
+            return D3D11_BLEND_ONE;
+        case wgpu::BlendFactor::Src:
+            return D3D11_BLEND_SRC_COLOR;
+        case wgpu::BlendFactor::OneMinusSrc:
+            return D3D11_BLEND_INV_SRC_COLOR;
+        case wgpu::BlendFactor::SrcAlpha:
+            return D3D11_BLEND_SRC_ALPHA;
+        case wgpu::BlendFactor::OneMinusSrcAlpha:
+            return D3D11_BLEND_INV_SRC_ALPHA;
+        case wgpu::BlendFactor::Dst:
+            return D3D11_BLEND_DEST_COLOR;
+        case wgpu::BlendFactor::OneMinusDst:
+            return D3D11_BLEND_INV_DEST_COLOR;
+        case wgpu::BlendFactor::DstAlpha:
+            return D3D11_BLEND_DEST_ALPHA;
+        case wgpu::BlendFactor::OneMinusDstAlpha:
+            return D3D11_BLEND_INV_DEST_ALPHA;
+        case wgpu::BlendFactor::SrcAlphaSaturated:
+            return D3D11_BLEND_SRC_ALPHA_SAT;
+        case wgpu::BlendFactor::Constant:
+            return D3D11_BLEND_BLEND_FACTOR;
+        case wgpu::BlendFactor::OneMinusConstant:
+            return D3D11_BLEND_INV_BLEND_FACTOR;
+        default:
+            UNREACHABLE();
+    }
+}
+
+D3D11_BLEND_OP D3DBlendOperation(wgpu::BlendOperation blendOperation) {
+    switch (blendOperation) {
+        case wgpu::BlendOperation::Add:
+            return D3D11_BLEND_OP_ADD;
+        case wgpu::BlendOperation::Subtract:
+            return D3D11_BLEND_OP_SUBTRACT;
+        case wgpu::BlendOperation::ReverseSubtract:
+            return D3D11_BLEND_OP_REV_SUBTRACT;
+        case wgpu::BlendOperation::Min:
+            return D3D11_BLEND_OP_MIN;
+        case wgpu::BlendOperation::Max:
+            return D3D11_BLEND_OP_MAX;
+        default:
+            UNREACHABLE();
+    }
+}
+
+uint32_t D3DColorWriteMask(wgpu::ColorWriteMask colorWriteMask) {
+    uint32_t d3dColorWriteMask = 0;
+    if (colorWriteMask & wgpu::ColorWriteMask::Red) {
+        d3dColorWriteMask |= D3D11_COLOR_WRITE_ENABLE_RED;
+    }
+    if (colorWriteMask & wgpu::ColorWriteMask::Green) {
+        d3dColorWriteMask |= D3D11_COLOR_WRITE_ENABLE_GREEN;
+    }
+    if (colorWriteMask & wgpu::ColorWriteMask::Blue) {
+        d3dColorWriteMask |= D3D11_COLOR_WRITE_ENABLE_BLUE;
+    }
+    if (colorWriteMask & wgpu::ColorWriteMask::Alpha) {
+        d3dColorWriteMask |= D3D11_COLOR_WRITE_ENABLE_ALPHA;
+    }
+    return d3dColorWriteMask;
+}
+
 }  // namespace
 
 // static
@@ -154,19 +222,22 @@ RenderPipeline::RenderPipeline(Device* device, const RenderPipelineDescriptor* d
 
 MaybeError RenderPipeline::Initialize() {
     DAWN_TRY(InitializeRasterizerState());
+    DAWN_TRY(InitializeBlendState());
     DAWN_TRY(InitializeShaders());
     return {};
 }
 
 RenderPipeline::~RenderPipeline() = default;
 
-MaybeError RenderPipeline::ApplyNow(CommandRecordingContext* commandRecordingContext) {
+MaybeError RenderPipeline::ApplyNow(CommandRecordingContext* commandRecordingContext,
+                                    const std::array<float, 4>& blendColor) {
     ID3D11DeviceContext1* d3dDeviceContext1 = commandRecordingContext->GetD3D11DeviceContext1();
     d3dDeviceContext1->IASetPrimitiveTopology(mD3DPrimitiveTopology);
     d3dDeviceContext1->IASetInputLayout(mInputLayout.Get());
     d3dDeviceContext1->RSSetState(mRasterizerState.Get());
     d3dDeviceContext1->VSSetShader(mVertexShader.Get(), nullptr, 0);
     d3dDeviceContext1->PSSetShader(mPixelShader.Get(), nullptr, 0);
+    d3dDeviceContext1->OMSetBlendState(mBlendState.Get(), blendColor.data(), GetSampleMask());
     return {};
 }
 
@@ -207,6 +278,44 @@ MaybeError RenderPipeline::InitializeInputLayout(const Blob& vertexShader) {
                                   vertexShader.Size(), &mInputLayout),
                               "ID3D11Device::CreateInputLayout"));
     }
+    return {};
+}
+
+MaybeError RenderPipeline::InitializeBlendState() {
+    Device* device = ToBackend(GetDevice());
+
+    D3D11_BLEND_DESC blendDesc;
+    blendDesc.AlphaToCoverageEnable = IsAlphaToCoverageEnabled();
+    blendDesc.IndependentBlendEnable = TRUE;
+
+    static_assert(kMaxColorAttachments == std::size(blendDesc.RenderTarget));
+    for (ColorAttachmentIndex i(0Ui8); i < ColorAttachmentIndex(kMaxColorAttachments); ++i) {
+        D3D11_RENDER_TARGET_BLEND_DESC& rtBlendDesc =
+            blendDesc.RenderTarget[static_cast<uint8_t>(i)];
+        const ColorTargetState* descriptor = GetColorTargetState(ColorAttachmentIndex(i));
+        if (descriptor->blend) {
+            rtBlendDesc.BlendEnable = TRUE;
+            rtBlendDesc.SrcBlend = D3DBlendFactor(descriptor->blend->color.srcFactor);
+            rtBlendDesc.DestBlend = D3DBlendFactor(descriptor->blend->color.dstFactor);
+            rtBlendDesc.BlendOp = D3DBlendOperation(descriptor->blend->color.operation);
+            rtBlendDesc.SrcBlendAlpha = D3DBlendFactor(descriptor->blend->alpha.srcFactor);
+            rtBlendDesc.DestBlendAlpha = D3DBlendFactor(descriptor->blend->alpha.dstFactor);
+            rtBlendDesc.BlendOpAlpha = D3DBlendOperation(descriptor->blend->alpha.operation);
+            rtBlendDesc.RenderTargetWriteMask = D3DColorWriteMask(descriptor->writeMask);
+        } else {
+            rtBlendDesc.BlendEnable = FALSE;
+            rtBlendDesc.SrcBlend = D3D11_BLEND_ONE;
+            rtBlendDesc.DestBlend = D3D11_BLEND_ZERO;
+            rtBlendDesc.BlendOp = D3D11_BLEND_OP_ADD;
+            rtBlendDesc.SrcBlendAlpha = D3D11_BLEND_ONE;
+            rtBlendDesc.DestBlendAlpha = D3D11_BLEND_ZERO;
+            rtBlendDesc.BlendOpAlpha = D3D11_BLEND_OP_ADD;
+            rtBlendDesc.RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+        }
+    }
+
+    DAWN_TRY(CheckHRESULT(device->GetD3D11Device()->CreateBlendState(&blendDesc, &mBlendState),
+                          "ID3D11Device::CreateBlendState"));
     return {};
 }
 

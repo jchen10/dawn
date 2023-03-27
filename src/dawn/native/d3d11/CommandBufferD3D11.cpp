@@ -15,6 +15,7 @@
 #include "dawn/native/d3d11/CommandBufferD3D11.h"
 
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <vector>
 
@@ -698,12 +699,6 @@ MaybeError CommandBuffer::ExecuteRenderPass(BeginRenderPassCmd* renderPass,
     d3d11DeviceContext1->OMSetRenderTargets(static_cast<uint8_t>(attachmentCount),
                                             d3d11RenderTargetViews.data(), d3d11DepthStencilView);
 
-    // Set the default values for the dynamic state:
-    // Set blend color
-    constexpr float kBlendColor[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-    constexpr UINT kSampleMask = 0xFFFFFFFF;
-    d3d11DeviceContext1->OMSetBlendState(/*pBlendState=*/nullptr, kBlendColor, kSampleMask);
-
     // Set viewport
     D3D11_VIEWPORT viewport;
     viewport.TopLeftX = 0;
@@ -723,15 +718,14 @@ MaybeError CommandBuffer::ExecuteRenderPass(BeginRenderPassCmd* renderPass,
     d3d11DeviceContext1->RSSetScissorRects(1, &scissor);
 
     RenderPipeline* lastPipeline = nullptr;
-    // VertexStateBufferBindingTracker vertexStateBufferBindingTracker;
     BindGroupTracker bindGroupTracker = {};
+    std::array<float, 4> blendColor = {0.0f, 0.0f, 0.0f, 0.0f};
 
     auto DoRenderBundleCommand = [&](CommandIterator* iter, Command type) -> MaybeError {
         switch (type) {
             case Command::Draw: {
                 DrawCmd* draw = iter->NextCommand<DrawCmd>();
 
-                // vertexStateBufferBindingTracker.Apply(gl);
                 DAWN_TRY(bindGroupTracker.Apply(commandRecordingContext));
 
                 commandRecordingContext->GetD3D11DeviceContext()->DrawInstanced(
@@ -800,8 +794,7 @@ MaybeError CommandBuffer::ExecuteRenderPass(BeginRenderPassCmd* renderPass,
                 SetRenderPipelineCmd* cmd = iter->NextCommand<SetRenderPipelineCmd>();
 
                 lastPipeline = ToBackend(cmd->pipeline).Get();
-                DAWN_TRY(lastPipeline->ApplyNow(commandRecordingContext));
-                // vertexStateBufferBindingTracker.OnSetPipeline(lastPipeline);
+                DAWN_TRY(lastPipeline->ApplyNow(commandRecordingContext, blendColor));
                 bindGroupTracker.OnSetPipeline(lastPipeline);
 
                 break;
@@ -899,26 +892,18 @@ MaybeError CommandBuffer::ExecuteRenderPass(BeginRenderPassCmd* renderPass,
                                           static_cast<LONG>(cmd->y + cmd->height)};
                 commandRecordingContext->GetD3D11DeviceContext()->RSSetScissorRects(1,
                                                                                     &scissorRect);
-
                 break;
             }
 
             case Command::SetBlendConstant: {
                 SetBlendConstantCmd* cmd = mCommands.NextCommand<SetBlendConstantCmd>();
-
-                const std::array<float, 4> blendColor = ConvertToFloatColor(cmd->color);
-                // TODO(dawn:1705): BlendState?
-                commandRecordingContext->GetD3D11DeviceContext()->OMSetBlendState(
-                    /*pBlendState=*/nullptr, blendColor.data(), /*SampleMask=*/0xFFFFFFFF);
-
+                blendColor = ConvertToFloatColor(cmd->color);
                 break;
             }
 
             case Command::ExecuteBundles: {
-                [[maybe_unused]] ExecuteBundlesCmd* cmd =
-                    mCommands.NextCommand<ExecuteBundlesCmd>();
-                [[maybe_unused]] auto bundles =
-                    mCommands.NextData<Ref<RenderBundleBase>>(cmd->count);
+                ExecuteBundlesCmd* cmd = mCommands.NextCommand<ExecuteBundlesCmd>();
+                auto bundles = mCommands.NextData<Ref<RenderBundleBase>>(cmd->count);
                 for (uint32_t i = 0; i < cmd->count; ++i) {
                     CommandIterator* iter = bundles[i]->GetCommands();
                     iter->Reset();

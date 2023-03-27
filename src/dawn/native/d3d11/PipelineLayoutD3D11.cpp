@@ -52,14 +52,12 @@ MaybeError PipelineLayout::Initialize() {
                 case BindingInfoType::Buffer:
                     switch (bindingInfo.buffer.type) {
                         case wgpu::BufferBindingType::Uniform:
-                            mIndexInfo[group][bindingIndex] = uboIndex;
-                            uboIndex++;
+                            mIndexInfo[group][bindingIndex] = uboIndex++;
                             break;
                         case wgpu::BufferBindingType::Storage:
                         case kInternalStorageBufferBinding:
                         case wgpu::BufferBindingType::ReadOnlyStorage:
-                            mIndexInfo[group][bindingIndex] = ssboIndex;
-                            ssboIndex++;
+                            mIndexInfo[group][bindingIndex] = ssboIndex++;
                             break;
                         case wgpu::BufferBindingType::Undefined:
                             UNREACHABLE();
@@ -67,19 +65,16 @@ MaybeError PipelineLayout::Initialize() {
                     break;
 
                 case BindingInfoType::Sampler:
-                    mIndexInfo[group][bindingIndex] = samplerIndex;
-                    samplerIndex++;
+                    mIndexInfo[group][bindingIndex] = samplerIndex++;
                     break;
 
                 case BindingInfoType::Texture:
                 case BindingInfoType::ExternalTexture:
-                    mIndexInfo[group][bindingIndex] = sampledTextureIndex;
-                    sampledTextureIndex++;
+                    mIndexInfo[group][bindingIndex] = sampledTextureIndex++;
                     break;
 
                 case BindingInfoType::StorageTexture:
-                    mIndexInfo[group][bindingIndex] = storageTextureIndex;
-                    storageTextureIndex++;
+                    mIndexInfo[group][bindingIndex] = storageTextureIndex++;
                     break;
             }
         }
