@@ -126,6 +126,11 @@ deps = {
     'url': '{chromium_git}/external/github.com/glfw/glfw@62e175ef9fae75335575964c845a302447c012c7',
   },
 
+  # GLM for tests and samples
+  'third_party/glm': {
+    'url': '{chromium_git}/external/github.com/g-truc/glm@efec5db081e3aad807d0731e172ac597f6a39447',
+  },
+
   'third_party/vulkan_memory_allocator': {
     'url': '{chromium_git}/external/github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator@5e49f57a6e71a026a54eb42e366de09a4142d24e',
     'condition': 'dawn_standalone',

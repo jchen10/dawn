@@ -20,6 +20,7 @@ group("samples") {
     ":CHelloTriangle",
     ":ComputeBoids",
     ":CppHelloTriangle",
+    ":CppRotatingCube",
     ":ManualSwapChainTest",
   ]
 }
@@ -59,6 +60,10 @@ template("sample") {
 
 sample("CppHelloTriangle") {
   sources = [ "CppHelloTriangle.cpp" ]
+}
+
+sample("CppRotatingCube") {
+  sources = [ "CppRotatingCube.cpp" ]
 }
 
 sample("CHelloTriangle") {
