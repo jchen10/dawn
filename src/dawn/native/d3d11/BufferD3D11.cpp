@@ -289,7 +289,7 @@ MaybeError Buffer::InitializeToZero(CommandRecordingContext* commandContext) {
 
     // TODO(crbug.com/dawn/484): skip initializing the buffer when it is created on a heap
     // that has already been zero initialized.
-    DAWN_TRY(ClearBuffer(commandContext, uint8_t(0u)));
+    DAWN_TRY(ClearBufferInternal(commandContext, uint8_t(0u)));
     SetIsDataInitialized();
     GetDevice()->IncrementLazyClearCountForTesting();
 
@@ -300,30 +300,152 @@ MaybeError Buffer::ClearBuffer(CommandRecordingContext* commandContext,
                                uint8_t clearValue,
                                uint64_t offset,
                                uint64_t size) {
+    if (size == 0) {
+        return {};
+    }
+    // For non-staging buffers, we can use UpdateSubresource to write the data.
+    DAWN_TRY_ASSIGN(std::ignore,
+                    this->EnsureDataInitializedAsDestination(commandContext, offset, size));
+    return this->ClearBufferInternal(commandContext, clearValue, offset, size);
+}
+
+MaybeError Buffer::ClearBufferInternal(CommandRecordingContext* commandContext,
+                                       uint8_t clearValue,
+                                       uint64_t offset,
+                                       uint64_t size) {
     if (size <= 0) {
         DAWN_ASSERT(offset == 0);
         size = GetAllocatedSize();
     }
 
-    if (!IsGPUUsage(GetUsage())) {
+    if (!mD3d11Buffer) {
         memset(mStagingBuffer.get() + offset, clearValue, size);
         return {};
     }
 
-    DAWN_ASSERT(commandContext != nullptr);
-
     std::vector<uint8_t> clearData(size, clearValue);
-    D3D11_BOX dstBox;
-    dstBox.left = static_cast<UINT>(offset);
-    dstBox.right = static_cast<UINT>(offset + size);
-    dstBox.top = 0;
-    dstBox.bottom = 1;
-    dstBox.front = 0;
-    dstBox.back = 1;
+    return this->WriteBufferInternal(commandContext, offset, clearData.data(), size);
+}
 
-    commandContext->GetD3D11DeviceContext1()->UpdateSubresource(mD3d11Buffer.Get(), 0, &dstBox,
-                                                                clearData.data(), 0, 0);
+MaybeError Buffer::WriteBuffer(CommandRecordingContext* commandContext,
+                               uint64_t offset,
+                               const void* data,
+                               size_t size) {
+    if (size == 0) {
+        return {};
+    }
 
+    // For non-staging buffers, we can use UpdateSubresource to write the data.
+    DAWN_TRY_ASSIGN(std::ignore,
+                    this->EnsureDataInitializedAsDestination(commandContext, offset, size));
+    return this->WriteBufferInternal(commandContext, offset, data, size);
+}
+
+MaybeError Buffer::WriteBufferInternal(CommandRecordingContext* commandContext,
+                                       uint64_t offset,
+                                       const void* data,
+                                       size_t size) {
+    if (size == 0) {
+        return {};
+    }
+
+    if (mD3d11Buffer) {
+        // For non-staging buffers, we can use UpdateSubresource to write the data.
+        ID3D11DeviceContext1* d3d11DeviceContext1 = commandContext->GetD3D11DeviceContext1();
+        D3D11_BOX dstBox;
+        D3D11_BOX* pDstBox = nullptr;
+        if (this->GetUsage() & wgpu::BufferUsage::Uniform) {
+            if (offset != 0 || size != this->GetSize()) {
+                return DAWN_VALIDATION_ERROR(
+                    "Partial updates to uniform buffers are not allowed with D3D11");
+            }
+        } else {
+            dstBox.left = static_cast<UINT>(offset);
+            dstBox.right = static_cast<UINT>(offset + size);
+            dstBox.top = 0;
+            dstBox.bottom = 1;
+            dstBox.front = 0;
+            dstBox.back = 1;
+            pDstBox = &dstBox;
+        }
+        d3d11DeviceContext1->UpdateSubresource(this->GetD3D11Buffer(), 0, pDstBox, data, 0, 0);
+        return {};
+    }
+
+    memcpy(this->GetStagingBufferPointer() + offset, data, size);
     return {};
 }
+
+MaybeError Buffer::CopyFromBuffer(CommandRecordingContext* commandContext,
+                                  uint64_t offset,
+                                  size_t size,
+                                  Buffer* source,
+                                  uint64_t sourceOffset) {
+    if (size == 0) {
+        // Skip no-op copies.
+        return {};
+    }
+
+    DAWN_TRY(source->EnsureDataInitialized(commandContext));
+    DAWN_TRY_ASSIGN(std::ignore,
+                    this->EnsureDataInitializedAsDestination(commandContext, offset, size));
+
+    if (source->GetD3D11Buffer() && this->GetD3D11Buffer()) {
+        // Both buffers are GPU buffers.
+        D3D11_BOX srcBox;
+        srcBox.left = sourceOffset;
+        srcBox.right = sourceOffset + size;
+        srcBox.top = 0;
+        srcBox.bottom = 1;
+        srcBox.front = 0;
+        srcBox.back = 1;
+        commandContext->GetD3D11DeviceContext()->CopySubresourceRegion(
+            this->GetD3D11Buffer(), 0, offset, 0, 0, source->GetD3D11Buffer(), 0, &srcBox);
+        return {};
+    }
+
+    if (source->GetD3D11Buffer()) {
+        // Source buffer is a GPU buffer, destination buffer is a staging buffer (in system memory).
+        D3D11_BUFFER_DESC stagingDesc;
+        stagingDesc.ByteWidth = size;
+        stagingDesc.Usage = D3D11_USAGE_STAGING;
+        stagingDesc.BindFlags = 0;
+        stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        stagingDesc.MiscFlags = 0;
+        stagingDesc.StructureByteStride = 0;
+
+        ComPtr<ID3D11Buffer> stagingBuffer;
+        DAWN_TRY(CheckHRESULT(
+            commandContext->GetD3D11Device()->CreateBuffer(&stagingDesc, nullptr, &stagingBuffer),
+            "ID3D11Device::CreateBuffer"));
+
+        D3D11_BOX srcBox;
+        srcBox.left = sourceOffset;
+        srcBox.right = sourceOffset + size;
+        srcBox.top = 0;
+        srcBox.bottom = 1;
+        srcBox.front = 0;
+        srcBox.back = 1;
+        commandContext->GetD3D11DeviceContext()->CopySubresourceRegion(
+            stagingBuffer.Get(), 0, 0, 0, 0, source->GetD3D11Buffer(), 0, &srcBox);
+
+        // Map the staging buffer
+        // The map call will block until the GPU is done with the resource.
+        D3D11_MAPPED_SUBRESOURCE mappedResource;
+        DAWN_TRY(CheckHRESULT(commandContext->GetD3D11DeviceContext()->Map(
+                                  stagingBuffer.Get(), 0, D3D11_MAP_READ, 0, &mappedResource),
+                              "ID3D11DeviceContext::Map"));
+
+        memcpy(this->GetStagingBufferPointer() + offset, mappedResource.pData, size);
+
+        // Unmap the staging buffer
+        commandContext->GetD3D11DeviceContext()->Unmap(stagingBuffer.Get(), 0);
+        return {};
+    }
+
+    // If source buffer is a staging buffer (in system memory).
+    return this->WriteBufferInternal(commandContext, offset,
+                                     source->GetStagingBufferPointer() + sourceOffset, size);
+}
+
 }  // namespace dawn::native::d3d11

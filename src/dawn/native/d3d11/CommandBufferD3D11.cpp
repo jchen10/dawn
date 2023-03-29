@@ -240,87 +240,9 @@ MaybeError CommandBuffer::Execute() {
                 Buffer* source = ToBackend(copy->source.Get());
                 Buffer* destination = ToBackend(copy->destination.Get());
 
-                DAWN_TRY(source->EnsureDataInitialized(commandRecordingContext));
-                DAWN_TRY_ASSIGN(std::ignore,
-                                destination->EnsureDataInitializedAsDestination(
-                                    commandRecordingContext, copy->destinationOffset, copy->size));
-
-                if (source->GetD3D11Buffer() && destination->GetD3D11Buffer()) {
-                    D3D11_BOX srcBox;
-                    srcBox.left = copy->sourceOffset;
-                    srcBox.right = copy->sourceOffset + copy->size;
-                    srcBox.top = 0;
-                    srcBox.bottom = 1;
-                    srcBox.front = 0;
-                    srcBox.back = 1;
-                    commandRecordingContext->GetD3D11DeviceContext()->CopySubresourceRegion(
-                        destination->GetD3D11Buffer(), 0, copy->destinationOffset, 0, 0,
-                        source->GetD3D11Buffer(), 0, &srcBox);
-                } else if (source->GetD3D11Buffer()) {
-                    // Create staging buffer
-                    D3D11_BUFFER_DESC stagingDesc;
-                    stagingDesc.ByteWidth = copy->size;
-                    stagingDesc.Usage = D3D11_USAGE_STAGING;
-                    stagingDesc.BindFlags = 0;
-                    stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-                    stagingDesc.MiscFlags = 0;
-                    stagingDesc.StructureByteStride = 0;
-
-                    ComPtr<ID3D11Buffer> stagingBuffer;
-                    HRESULT hr = commandRecordingContext->GetD3D11Device()->CreateBuffer(
-                        &stagingDesc, nullptr, &stagingBuffer);
-                    DAWN_ASSERT(SUCCEEDED(hr));
-
-                    D3D11_BOX srcBox;
-                    srcBox.left = copy->sourceOffset;
-                    srcBox.right = copy->sourceOffset + copy->size;
-                    srcBox.top = 0;
-                    srcBox.bottom = 1;
-                    srcBox.front = 0;
-                    srcBox.back = 1;
-                    commandRecordingContext->GetD3D11DeviceContext()->CopySubresourceRegion(
-                        stagingBuffer.Get(), 0, 0, 0, 0, source->GetD3D11Buffer(), 0, &srcBox);
-
-                    // Map the staging buffer
-                    // The map call will block until the GPU is done with the resource.
-                    D3D11_MAPPED_SUBRESOURCE mappedResource;
-                    hr = commandRecordingContext->GetD3D11DeviceContext()->Map(
-                        stagingBuffer.Get(), 0, D3D11_MAP_READ, 0, &mappedResource);
-                    DAWN_ASSERT(SUCCEEDED(hr));
-
-                    memcpy(destination->GetStagingBufferPointer() + copy->destinationOffset,
-                           mappedResource.pData, copy->size);
-
-                    // Unmap the staging buffer
-                    commandRecordingContext->GetD3D11DeviceContext()->Unmap(stagingBuffer.Get(), 0);
-                } else if (destination->GetD3D11Buffer()) {
-                    D3D11_BOX dstBox;
-                    D3D11_BOX* pDstBox = nullptr;
-                    if (destination->GetUsage() & wgpu::BufferUsage::Uniform) {
-                        // TODO(dawn:1705): support partial updates of uniform buffers
-                        if (copy->destinationOffset != 0 || copy->size != destination->GetSize()) {
-                            return DAWN_VALIDATION_ERROR(
-                                "Can't update part of a uniform buffer with D3D11");
-                        }
-                    } else {
-                        dstBox.left = copy->destinationOffset;
-                        dstBox.right = copy->destinationOffset + copy->size;
-                        dstBox.top = 0;
-                        dstBox.bottom = 1;
-                        dstBox.front = 0;
-                        dstBox.back = 1;
-                        pDstBox = &dstBox;
-                    }
-
-                    commandRecordingContext->GetD3D11DeviceContext()->UpdateSubresource(
-                        destination->GetD3D11Buffer(), 0, pDstBox,
-                        source->GetStagingBufferPointer() + copy->sourceOffset, 0, 0);
-
-                } else {
-                    memcpy(destination->GetStagingBufferPointer() + copy->destinationOffset,
-                           source->GetStagingBufferPointer() + copy->sourceOffset, copy->size);
-                }
-
+                DAWN_TRY(destination->CopyFromBuffer(commandRecordingContext,
+                                                     copy->destinationOffset, copy->size, source,
+                                                     copy->sourceOffset));
                 break;
             }
 
@@ -466,41 +388,8 @@ MaybeError CommandBuffer::Execute() {
                     // Skip no-op fills.
                     break;
                 }
-                Buffer* dstBuffer = ToBackend(cmd->buffer.Get());
-
-                bool clearedToZero;
-                DAWN_TRY_ASSIGN(clearedToZero,
-                                dstBuffer->EnsureDataInitializedAsDestination(
-                                    commandRecordingContext, cmd->offset, cmd->size));
-
-                if (clearedToZero) {
-                    break;
-                }
-
-                if (uint8_t* stagingBufferPointer = dstBuffer->GetStagingBufferPointer()) {
-                    memset(stagingBufferPointer + cmd->offset, 0, cmd->size);
-                    break;
-                }
-
-                D3D11_BOX dstBox;
-                D3D11_BOX* pDstBox = nullptr;
-                if (dstBuffer->GetUsage() & wgpu::BufferUsage::Uniform) {
-                    // D3D11 doesn't support partial updates of uniform buffers.
-                    DAWN_ASSERT(cmd->offset == 0);
-                } else {
-                    dstBox.left = cmd->offset;
-                    dstBox.right = cmd->offset + cmd->size;
-                    dstBox.top = 0;
-                    dstBox.bottom = 1;
-                    dstBox.front = 0;
-                    dstBox.back = 1;
-                    pDstBox = &dstBox;
-                }
-
-                const std::vector<uint8_t> clearValues(cmd->size, 0u);
-                d3d11DeviceContext1->UpdateSubresource(dstBuffer->GetD3D11Buffer(), 0, pDstBox,
-                                                       clearValues.data(), 0, 0);
-
+                Buffer* buffer = ToBackend(cmd->buffer.Get());
+                DAWN_TRY(buffer->ClearBuffer(commandRecordingContext, 0, cmd->offset, cmd->size));
                 break;
             }
 
@@ -532,32 +421,8 @@ MaybeError CommandBuffer::Execute() {
 
                 Buffer* dstBuffer = ToBackend(cmd->buffer.Get());
                 uint8_t* data = mCommands.NextData<uint8_t>(cmd->size);
-
-                DAWN_TRY_ASSIGN(std::ignore, dstBuffer->EnsureDataInitializedAsDestination(
-                                                 commandRecordingContext, cmd->offset, cmd->size));
-
-                if (uint8_t* stagingBufferPointer = dstBuffer->GetStagingBufferPointer()) {
-                    memcpy(stagingBufferPointer + cmd->offset, data, cmd->size);
-                    break;
-                }
-
-                D3D11_BOX dstBox;
-                D3D11_BOX* pDstBox = nullptr;
-                if (dstBuffer->GetUsage() & wgpu::BufferUsage::Uniform) {
-                    // D3D11 doesn't support partial updates of uniform buffers.
-                    DAWN_ASSERT(cmd->offset == 0);
-                } else {
-                    dstBox.left = cmd->offset;
-                    dstBox.right = cmd->offset + cmd->size;
-                    dstBox.top = 0;
-                    dstBox.bottom = 1;
-                    dstBox.front = 0;
-                    dstBox.back = 1;
-                    pDstBox = &dstBox;
-                }
-
-                d3d11DeviceContext1->UpdateSubresource(dstBuffer->GetD3D11Buffer(), 0, pDstBox,
-                                                       data, 0, 0);
+                DAWN_TRY(
+                    dstBuffer->WriteBuffer(commandRecordingContext, cmd->offset, data, cmd->size));
 
                 break;
             }

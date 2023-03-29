@@ -46,6 +46,20 @@ class Buffer final : public BufferBase {
     ID3D11Buffer* GetD3D11Buffer() const { return mD3d11Buffer.Get(); }
     uint8_t* GetStagingBufferPointer() { return mStagingBuffer.get(); }
 
+    MaybeError ClearBuffer(CommandRecordingContext* commandContext,
+                           uint8_t clearValue,
+                           uint64_t offset,
+                           uint64_t size);
+    MaybeError WriteBuffer(CommandRecordingContext* commandContext,
+                           uint64_t offset,
+                           const void* data,
+                           size_t size);
+    MaybeError CopyFromBuffer(CommandRecordingContext* commandContext,
+                              uint64_t offset,
+                              size_t size,
+                              Buffer* source,
+                              uint64_t sourceOffset);
+
   private:
     Buffer(Device* device, const BufferDescriptor* descriptor);
     ~Buffer() override;
@@ -61,10 +75,16 @@ class Buffer final : public BufferBase {
     MaybeError MapInternal(bool isWrite, size_t start, size_t end, const char* contextInfo);
 
     MaybeError InitializeToZero(CommandRecordingContext* commandContext);
-    MaybeError ClearBuffer(CommandRecordingContext* commandContext,
-                           uint8_t clearValue,
-                           uint64_t offset = 0,
-                           uint64_t size = 0);
+    // CLear the buffer without checking if the buffer is initialized.
+    MaybeError ClearBufferInternal(CommandRecordingContext* commandContext,
+                                   uint8_t clearValue,
+                                   uint64_t offset = 0,
+                                   uint64_t size = 0);
+    // Write the buffer without checking if the buffer is initialized.
+    MaybeError WriteBufferInternal(CommandRecordingContext* commandContext,
+                                   uint64_t bufferOffset,
+                                   const void* data,
+                                   size_t size);
 
     // The buffer object can be used as vertex, index, uniform, storage, or indirect buffer.
     ComPtr<ID3D11Buffer> mD3d11Buffer;

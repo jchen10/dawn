@@ -46,48 +46,9 @@ MaybeError Queue::WriteBufferImpl(BufferBase* buffer,
                                   uint64_t bufferOffset,
                                   const void* data,
                                   size_t size) {
-    if (size == 0) {
-        return {};
-    }
-
-    ID3D11Buffer* d3d11Buffer = ToBackend(buffer)->GetD3D11Buffer();
-    if (d3d11Buffer) {
-        // For non-staging buffers, we can use UpdateSubresource to write the data.
-        CommandRecordingContext* commandRecordingContext;
-        DAWN_TRY_ASSIGN(commandRecordingContext,
-                        ToBackend(GetDevice())->GetPendingCommandContext());
-
-        DAWN_TRY_ASSIGN(std::ignore, ToBackend(buffer)->EnsureDataInitializedAsDestination(
-                                         commandRecordingContext, bufferOffset, size));
-
-        ID3D11DeviceContext1* d3d11DeviceContext1 =
-            commandRecordingContext->GetD3D11DeviceContext1();
-        D3D11_BOX dstBox;
-        D3D11_BOX* pDstBox = nullptr;
-        if (buffer->GetUsage() & wgpu::BufferUsage::Uniform) {
-            if (bufferOffset != 0 || size != buffer->GetSize()) {
-                return DAWN_VALIDATION_ERROR(
-                    "Partial updates to uniform buffers are not allowed with D3D11");
-            }
-        } else {
-            dstBox.left = static_cast<UINT>(bufferOffset);
-            dstBox.right = static_cast<UINT>(bufferOffset + size);
-            dstBox.top = 0;
-            dstBox.bottom = 1;
-            dstBox.front = 0;
-            dstBox.back = 1;
-            pDstBox = &dstBox;
-        }
-        d3d11DeviceContext1->UpdateSubresource(ToBackend(buffer)->GetD3D11Buffer(), 0, pDstBox,
-                                               data, 0, 0);
-    } else {
-        // For staging buffers, we can just memcpy the data into the buffer.
-        DAWN_TRY_ASSIGN(std::ignore, ToBackend(buffer)->EnsureDataInitializedAsDestination(
-                                         nullptr, bufferOffset, size));
-        memcpy(ToBackend(buffer)->GetStagingBufferPointer() + bufferOffset, data, size);
-    }
-
-    return {};
+    CommandRecordingContext* commandRecordingContext;
+    DAWN_TRY_ASSIGN(commandRecordingContext, ToBackend(GetDevice())->GetPendingCommandContext());
+    return ToBackend(buffer)->WriteBuffer(commandRecordingContext, bufferOffset, data, size);
 }
 
 MaybeError Queue::WriteTextureImpl(const ImageCopyTexture& destination,
