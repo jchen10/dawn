@@ -63,6 +63,16 @@ class BindGroupTracker : public BindGroupTrackerBase<false, uint64_t> {
         return {};
     }
 
+    void AfterDispatch(CommandRecordingContext* commandRecordingContext) {
+        // Clear the UAVs after the dispatch.
+        for (UINT uav : mUnorderedAccessViews) {
+            ID3D11UnorderedAccessView* nullUAV = nullptr;
+            commandRecordingContext->GetD3D11DeviceContext1()->CSSetUnorderedAccessViews(
+                uav, 1, &nullUAV, nullptr);
+        }
+        mUnorderedAccessViews.clear();
+    }
+
   private:
     MaybeError ApplyBindGroup(CommandRecordingContext* commandRecordingContext,
                               BindGroupIndex index,
@@ -78,8 +88,7 @@ class BindGroupTracker : public BindGroupTrackerBase<false, uint64_t> {
                 case BindingInfoType::Buffer: {
                     BufferBinding binding = group->GetBindingAsBufferBinding(bindingIndex);
                     ID3D11Buffer* d3d11Buffer = ToBackend(binding.buffer)->GetD3D11Buffer();
-                    UINT offset = static_cast<UINT>(binding.offset);
-                    UINT size = static_cast<UINT>(binding.size);
+                    auto offset = binding.offset;
                     if (bindingInfo.buffer.hasDynamicOffset) {
                         // Dynamic buffers are packed at the front of BindingIndices.
                         offset += dynamicOffsets[bindingIndex];
@@ -93,10 +102,10 @@ class BindGroupTracker : public BindGroupTrackerBase<false, uint64_t> {
                             // Offset and size are measured in shader constants, which are 16 bytes
                             // (4*32-bit components).
                             DAWN_ASSERT(offset % 16 == 0);
-                            UINT firstConstant = offset / 16;
+                            UINT firstConstant = static_cast<UINT>(offset / 16);
                             // Each number of constants must be a multiple of 16 constants.
-                            size = Align(size, 256);
-                            UINT numConstants = size / 16;
+                            auto size = Align(binding.size, 256);
+                            UINT numConstants = static_cast<UINT>(size / 16);
 
                             if (bindingInfo.visibility & wgpu::ShaderStage::Vertex) {
                                 deviceContext->VSSetConstantBuffers1(bindingSlot, 1, &d3d11Buffer,
@@ -112,10 +121,40 @@ class BindGroupTracker : public BindGroupTrackerBase<false, uint64_t> {
                             }
                             break;
                         }
-                        case wgpu::BufferBindingType::Storage:
-                        case wgpu::BufferBindingType::ReadOnlyStorage:
-                            // TODO(dawn:1730): support storage buffers
-                            return DAWN_UNIMPLEMENTED_ERROR("Storage buffers are not implemented");
+                        case wgpu::BufferBindingType::Storage: {
+                            ID3D11UnorderedAccessView* d3d11UAV;
+                            DAWN_TRY_ASSIGN(
+                                d3d11UAV,
+                                ToBackend(binding.buffer)->GetD3D11UnorderedAccessView1());
+                            UINT firstElement = offset / 4;
+                            if (bindingInfo.visibility & wgpu::ShaderStage::Compute) {
+                                deviceContext->CSSetUnorderedAccessViews(bindingSlot, 1, &d3d11UAV,
+                                                                         &firstElement);
+                                // Record the bounded UAVs so that we can clear them after the
+                                // dispatch.
+                                mUnorderedAccessViews.emplace_back(bindingSlot);
+                            } else {
+                                return DAWN_VALIDATION_ERROR(
+                                    "Storage buffers are only supported in compute shaders");
+                            }
+                            break;
+                        }
+                        case wgpu::BufferBindingType::ReadOnlyStorage: {
+                            ID3D11ShaderResourceView* d3d11SRV;
+                            DAWN_TRY_ASSIGN(d3d11SRV, ToBackend(binding.buffer)
+                                                          ->GetD3D11ShaderResourceView(
+                                                              binding.offset, binding.size));
+                            if (bindingInfo.visibility & wgpu::ShaderStage::Vertex) {
+                                deviceContext->VSSetShaderResources(bindingSlot, 1, &d3d11SRV);
+                            }
+                            if (bindingInfo.visibility & wgpu::ShaderStage::Fragment) {
+                                deviceContext->PSSetShaderResources(bindingSlot, 1, &d3d11SRV);
+                            }
+                            if (bindingInfo.visibility & wgpu::ShaderStage::Compute) {
+                                deviceContext->CSSetShaderResources(bindingSlot, 1, &d3d11SRV);
+                            }
+                            break;
+                        }
                         case wgpu::BufferBindingType::Undefined:
                             UNREACHABLE();
                     }
@@ -161,6 +200,8 @@ class BindGroupTracker : public BindGroupTrackerBase<false, uint64_t> {
         }
         return {};
     }
+
+    std::vector<UINT> mUnorderedAccessViews;
 };
 
 }  // namespace
@@ -454,6 +495,7 @@ MaybeError CommandBuffer::ExecuteComputePass(CommandRecordingContext* commandRec
 
                 commandRecordingContext->GetD3D11DeviceContext()->Dispatch(dispatch->x, dispatch->y,
                                                                            dispatch->z);
+                bindGroupTracker.AfterDispatch(commandRecordingContext);
 
                 break;
             }
@@ -469,13 +511,15 @@ MaybeError CommandBuffer::ExecuteComputePass(CommandRecordingContext* commandRec
                 commandRecordingContext->GetD3D11DeviceContext()->DispatchIndirect(
                     indirectBuffer->GetD3D11Buffer(), indirectBufferOffset);
 
+                bindGroupTracker.AfterDispatch(commandRecordingContext);
+
                 break;
             }
 
             case Command::SetComputePipeline: {
                 SetComputePipelineCmd* cmd = mCommands.NextCommand<SetComputePipelineCmd>();
                 lastPipeline = ToBackend(cmd->pipeline).Get();
-                lastPipeline->ApplyNow();
+                lastPipeline->ApplyNow(commandRecordingContext);
                 bindGroupTracker.OnSetPipeline(lastPipeline);
                 break;
             }

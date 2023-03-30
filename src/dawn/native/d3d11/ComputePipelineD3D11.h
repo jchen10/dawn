@@ -21,6 +21,7 @@
 
 namespace dawn::native::d3d11 {
 
+class CommandRecordingContext;
 class Device;
 
 class ComputePipeline final : public ComputePipelineBase {
@@ -31,7 +32,7 @@ class ComputePipeline final : public ComputePipelineBase {
                                 WGPUCreateComputePipelineAsyncCallback callback,
                                 void* userdata);
 
-    void ApplyNow();
+    void ApplyNow(CommandRecordingContext* commandRecordingContext);
 
     MaybeError Initialize() override;
 
@@ -39,6 +40,8 @@ class ComputePipeline final : public ComputePipelineBase {
     using ComputePipelineBase::ComputePipelineBase;
     ~ComputePipeline() override;
     void DestroyImpl() override;
+
+    ComPtr<ID3D11ComputeShader> mComputeShader;
 };
 
 }  // namespace dawn::native::d3d11

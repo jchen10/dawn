@@ -17,6 +17,7 @@
 
 #include <limits>
 #include <memory>
+#include <optional>
 
 #include "dawn/native/Buffer.h"
 #include "dawn/native/d3d/d3d_platform.h"
@@ -45,6 +46,9 @@ class Buffer final : public BufferBase {
 
     ID3D11Buffer* GetD3D11Buffer() const { return mD3d11Buffer.Get(); }
     uint8_t* GetStagingBufferPointer() { return mStagingBuffer.get(); }
+    ResultOrError<ID3D11ShaderResourceView*> GetD3D11ShaderResourceView(uint64_t offset,
+                                                                        uint64_t size) const;
+    ResultOrError<ID3D11UnorderedAccessView1*> GetD3D11UnorderedAccessView1() const;
 
     MaybeError ClearBuffer(CommandRecordingContext* commandContext,
                            uint8_t clearValue,
@@ -94,6 +98,9 @@ class Buffer final : public BufferBase {
         void operator()(uint8_t* ptr) { free(ptr); }
     };
     std::unique_ptr<uint8_t, Deleter> mStagingBuffer;
+
+    mutable std::optional<ComPtr<ID3D11ShaderResourceView>> mShaderResourceView;
+    mutable std::optional<ComPtr<ID3D11UnorderedAccessView1>> mUnorderedAccessView1;
 
     bool mFixedResourceState = false;
     wgpu::BufferUsage mLastUsage = wgpu::BufferUsage::None;

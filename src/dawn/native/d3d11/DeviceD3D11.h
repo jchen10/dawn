@@ -60,6 +60,7 @@ class Device final : public d3d::Device {
     MaybeError TickImpl() override;
 
     ID3D11Device* GetD3D11Device() const;
+    ID3D11Device5* GetD3D11Device5() const;
 
     ResultOrError<CommandRecordingContext*> GetPendingCommandContext(
         Device::SubmitMode submitMode = Device::SubmitMode::Normal);
@@ -185,7 +186,7 @@ class Device final : public d3d::Device {
 
     ResultOrError<ExecutionSerial> CheckAndUpdateCompletedSerials() override;
 
-    ComPtr<ID3D11Device> mD3d11Device;  // Device is owned by adapter and will not be outlived.
+    ComPtr<ID3D11Device5> mD3d11Device5;  // Device is owned by adapter and will not be outlived.
 
     CommandRecordingContext mPendingCommands;
 

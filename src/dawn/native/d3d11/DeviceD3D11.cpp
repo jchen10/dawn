@@ -56,17 +56,17 @@ ResultOrError<Ref<Device>> Device::Create(Adapter* adapter,
 }
 
 MaybeError Device::Initialize(const DeviceDescriptor* descriptor) {
-    mD3d11Device = ToBackend(GetAdapter())->GetDevice();
-    ASSERT(mD3d11Device != nullptr);
+    ComPtr<ID3D11Device> device = ToBackend(GetAdapter())->GetDevice();
+    ASSERT(device != nullptr);
 
     DAWN_TRY(DeviceBase::Initialize(Queue::Create(this, &descriptor->defaultQueue)));
 
-    ComPtr<ID3D11Device5> device5;
-    DAWN_TRY(CheckHRESULT(mD3d11Device.As(&device5), "D3D11: getting ID3D11Device5"));
+    DAWN_TRY(CheckHRESULT(device.As(&mD3d11Device5), "D3D11: getting ID3D11Device5"));
 
     // Create the fence.
-    DAWN_TRY(CheckHRESULT(device5->CreateFence(0, D3D11_FENCE_FLAG_NONE, IID_PPV_ARGS(&mFence)),
-                          "D3D11: creating fence"));
+    DAWN_TRY(
+        CheckHRESULT(mD3d11Device5->CreateFence(0, D3D11_FENCE_FLAG_NONE, IID_PPV_ARGS(&mFence)),
+                     "D3D11: creating fence"));
 
     // Create the fence event.
     mFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
@@ -81,7 +81,11 @@ Device::~Device() {
 }
 
 ID3D11Device* Device::GetD3D11Device() const {
-    return mD3d11Device.Get();
+    return mD3d11Device5.Get();
+}
+
+ID3D11Device5* Device::GetD3D11Device5() const {
+    return mD3d11Device5.Get();
 }
 
 ResultOrError<CommandRecordingContext*> Device::GetPendingCommandContext(
@@ -89,7 +93,7 @@ ResultOrError<CommandRecordingContext*> Device::GetPendingCommandContext(
     // Callers of GetPendingCommandList do so to record commands. Only reserve a command
     // allocator when it is needed so we don't submit empty command lists
     if (!mPendingCommands.IsOpen()) {
-        DAWN_TRY(mPendingCommands.Open(mD3d11Device.Get()));
+        DAWN_TRY(mPendingCommands.Open(mD3d11Device5.Get()));
     }
     if (submitMode == Device::SubmitMode::Normal) {
         mPendingCommands.SetNeedsSubmit();
@@ -150,7 +154,7 @@ ResultOrError<ExecutionSerial> Device::CheckAndUpdateCompletedSerials() {
     if (DAWN_UNLIKELY(completedSerial == ExecutionSerial(UINT64_MAX))) {
         // GetCompletedValue returns UINT64_MAX if the device was removed.
         // Try to query the failure reason.
-        DAWN_TRY(CheckHRESULT(mD3d11Device->GetDeviceRemovedReason(),
+        DAWN_TRY(CheckHRESULT(mD3d11Device5->GetDeviceRemovedReason(),
                               "ID3D11Device::GetDeviceRemovedReason"));
         // Otherwise, return a generic device lost error.
         return DAWN_DEVICE_LOST_ERROR("Device lost");
@@ -358,7 +362,7 @@ MaybeError Device::CheckDebugLayerAndGenerateErrors() {
     }
 
     ComPtr<ID3D11InfoQueue> infoQueue;
-    DAWN_TRY(CheckHRESULT(mD3d11Device.As(&infoQueue),
+    DAWN_TRY(CheckHRESULT(mD3d11Device5.As(&infoQueue),
                           "D3D11 QueryInterface ID3D11Device to ID3D11InfoQueue"));
     uint64_t totalErrors = infoQueue->GetNumStoredMessagesAllowedByRetrievalFilter();
 
@@ -382,7 +386,7 @@ void Device::AppendDebugLayerMessages(ErrorData* error) {
     }
 
     ComPtr<ID3D11InfoQueue> infoQueue;
-    if (FAILED(mD3d11Device.As(&infoQueue))) {
+    if (FAILED(mD3d11Device5.As(&infoQueue))) {
         return;
     }
     uint64_t totalErrors = infoQueue->GetNumStoredMessagesAllowedByRetrievalFilter();

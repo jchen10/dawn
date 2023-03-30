@@ -72,6 +72,9 @@ UINT D3D11BufferCPUAccessFlags(wgpu::BufferUsage usage) {
 UINT D3D11BufferMiscFlags(wgpu::BufferUsage usage) {
     // TODO(dawn:1705): figure out the flags for staging buffers
     UINT miscFlags = 0;
+    if (usage & (wgpu::BufferUsage::Storage | kInternalStorageBuffer)) {
+        miscFlags |= D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS;
+    }
     return miscFlags;
 }
 
@@ -294,6 +297,56 @@ MaybeError Buffer::InitializeToZero(CommandRecordingContext* commandContext) {
     GetDevice()->IncrementLazyClearCountForTesting();
 
     return {};
+}
+
+ResultOrError<ID3D11ShaderResourceView*> Buffer::GetD3D11ShaderResourceView(uint64_t offset,
+                                                                            uint64_t size) const {
+    UINT firstElement = static_cast<UINT>(offset / 4);
+    UINT numElements = static_cast<UINT>(size / 4);
+    if (mShaderResourceView.has_value()) {
+        D3D11_SHADER_RESOURCE_VIEW_DESC desc;
+        mShaderResourceView.value()->GetDesc(&desc);
+        if (desc.Buffer.FirstElement != firstElement || desc.Buffer.NumElements != numElements) {
+            mShaderResourceView.reset();
+        }
+    }
+
+    if (!mShaderResourceView.has_value()) {
+        D3D11_SHADER_RESOURCE_VIEW_DESC desc;
+        desc.Format = DXGI_FORMAT_R32_TYPELESS;
+        desc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
+        desc.Buffer.FirstElement = firstElement;
+        desc.Buffer.NumElements = numElements;
+
+        ComPtr<ID3D11ShaderResourceView> srv;
+        DAWN_TRY(CheckHRESULT(ToBackend(GetDevice())
+                                  ->GetD3D11Device()
+                                  ->CreateShaderResourceView(mD3d11Buffer.Get(), &desc, &srv),
+                              "ShaderResourceView creation"));
+        mShaderResourceView.emplace(std::move(srv));
+    }
+
+    return mShaderResourceView.value().Get();
+}
+
+ResultOrError<ID3D11UnorderedAccessView1*> Buffer::GetD3D11UnorderedAccessView1() const {
+    if (!mUnorderedAccessView1.has_value()) {
+        D3D11_UNORDERED_ACCESS_VIEW_DESC1 desc;
+        desc.Format = DXGI_FORMAT_R32_TYPELESS;
+        desc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
+        desc.Buffer.FirstElement = 0;
+        desc.Buffer.NumElements = GetSize() / 4;
+        desc.Buffer.Flags = D3D11_BUFFER_UAV_FLAG_RAW;
+
+        ComPtr<ID3D11UnorderedAccessView1> uav;
+        DAWN_TRY(CheckHRESULT(ToBackend(GetDevice())
+                                  ->GetD3D11Device5()
+                                  ->CreateUnorderedAccessView1(mD3d11Buffer.Get(), &desc, &uav),
+                              "UnorderedAccessView creation"));
+        mUnorderedAccessView1.emplace(std::move(uav));
+    }
+
+    return mUnorderedAccessView1.value().Get();
 }
 
 MaybeError Buffer::ClearBuffer(CommandRecordingContext* commandContext,
