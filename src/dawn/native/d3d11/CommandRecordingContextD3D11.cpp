@@ -18,7 +18,10 @@
 #include <utility>
 
 #include "dawn/native/d3d/D3DError.h"
+#include "dawn/native/d3d11/BufferD3D11.h"
 #include "dawn/native/d3d11/DeviceD3D11.h"
+#include "dawn/native/d3d11/Forward.h"
+#include "dawn/native/d3d11/PipelineLayoutD3D11.h"
 #include "dawn/platform/DawnPlatform.h"
 #include "dawn/platform/tracing/TraceEvent.h"
 
@@ -29,20 +32,42 @@ void CommandRecordingContext::AddToSharedTextureList(Texture* texture) {
     mSharedTextures.insert(texture);
 }
 
-MaybeError CommandRecordingContext::Open(ID3D11Device* d3d11Device) {
+MaybeError CommandRecordingContext::Open(Device* device) {
     ASSERT(!IsOpen());
-    ASSERT(d3d11Device);
+    ASSERT(device);
 
     if (!mD3D11DeviceContext4) {
-        ComPtr<ID3D11DeviceContext> d3d11DeviceContext;
-        d3d11Device->GetImmediateContext(&d3d11DeviceContext);
+        ID3D11Device* d3d11Device = device->GetD3D11Device();
 
+        ComPtr<ID3D11DeviceContext> d3d11DeviceContext;
+        device->GetD3D11Device5()->GetImmediateContext(&d3d11DeviceContext);
+
+        ComPtr<ID3D11DeviceContext4> d3d11DeviceContext4;
         DAWN_TRY(
-            CheckHRESULT(d3d11DeviceContext.As(&mD3D11DeviceContext4),
+            CheckHRESULT(d3d11DeviceContext.As(&d3d11DeviceContext4),
                          "D3D11 querying immediate context for ID3D11DeviceContext4 interface"));
+
+        // Create a uniform buffer for built in variables.
+        BufferDescriptor descriptor;
+        descriptor.size = 256;
+        descriptor.usage = wgpu::BufferUsage::Uniform | wgpu::BufferUsage::CopyDst;
+        descriptor.mappedAtCreation = false;
+        descriptor.label = "builtin uniform buffer";
+        Ref<BufferBase> uniformBuffer;
+        DAWN_TRY_ASSIGN(uniformBuffer, device->CreateBuffer(&descriptor));
+
         mD3D11Device = d3d11Device;
+        mD3D11DeviceContext4 = std::move(d3d11DeviceContext4);
+        mUniformBuffer = ToBackend(std::move(uniformBuffer));
+
+        // Always bind the uniform buffer to the reserved slot for all pipelines.
+        // This buffer will be updated with the correct values before each draw or dispatch call.
+        ID3D11Buffer* bufferPtr = mUniformBuffer->GetD3D11Buffer();
+        mD3D11DeviceContext4->VSSetConstantBuffers(PipelineLayout::kReservedConstantBufferSlot, 1,
+                                                   &bufferPtr);
     }
-    DAWN_ASSERT(mD3D11Device.Get() == d3d11Device);
+
+    DAWN_ASSERT(mD3D11Device.Get() == device->GetD3D11Device());
     mIsOpen = true;
     mNeedsSubmit = false;
 
@@ -72,12 +97,22 @@ ID3D11DeviceContext4* CommandRecordingContext::GetD3D11DeviceContext4() const {
     return mD3D11DeviceContext4.Get();
 }
 
+Buffer* CommandRecordingContext::GetUniformBuffer() const {
+    return mUniformBuffer.Get();
+}
+
 void CommandRecordingContext::Release() {
-    mIsOpen = false;
-    mNeedsSubmit = false;
-    mSharedTextures.clear();
-    mD3D11DeviceContext4 = nullptr;
-    mD3D11Device = nullptr;
+    if (mIsOpen) {
+        mIsOpen = false;
+        mNeedsSubmit = false;
+        mSharedTextures.clear();
+        mUniformBuffer = nullptr;
+        ID3D11Buffer* nullBuffer = nullptr;
+        mD3D11DeviceContext4->VSSetConstantBuffers(PipelineLayout::kReservedConstantBufferSlot, 1,
+                                                   &nullBuffer);
+        mD3D11DeviceContext4 = nullptr;
+        mD3D11Device = nullptr;
+    }
 }
 
 bool CommandRecordingContext::IsOpen() const {

@@ -138,13 +138,13 @@ ResultOrError<d3d::CompiledShader> ShaderModule::Compile(
     // D3D11 (HLSL SM5.0) doesn't support spaces, so we have to put the firstIndex in the default
     // space(0)
     req.hlsl.firstIndexOffsetRegisterSpace = 0;
-    req.hlsl.firstIndexOffsetShaderRegister = layout->GetFirstIndexOffsetConstantBufferSlot();
+    req.hlsl.firstIndexOffsetShaderRegister = PipelineLayout::kNumWorkgroupsConstantBufferSlot;
 
     req.hlsl.usesNumWorkgroups = entryPoint.usesNumWorkgroups;
     // D3D11 (HLSL SM5.0) doesn't support spaces, so we have to put the numWorkgroups in the default
     // space(0)
     req.hlsl.numWorkgroupsRegisterSpace = 0;
-    req.hlsl.numWorkgroupsShaderRegister = layout->GetNumWorkgroupsConstantBufferSlot();
+    req.hlsl.numWorkgroupsShaderRegister = PipelineLayout::kNumWorkgroupsConstantBufferSlot;
 
     req.hlsl.bindingRemapper = std::move(bindingRemapper);
 

@@ -28,6 +28,12 @@ class Device;
 
 class PipelineLayout final : public PipelineLayoutBase {
   public:
+    enum {
+        kReservedConstantBufferSlot = D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT - 1,
+        kFirstIndexOffsetConstantBufferSlot = kReservedConstantBufferSlot,
+        kNumWorkgroupsConstantBufferSlot = kReservedConstantBufferSlot,
+    };
+
     static ResultOrError<Ref<PipelineLayout>> Create(Device* device,
                                                      const PipelineLayoutDescriptor* descriptor);
 
@@ -37,12 +43,6 @@ class PipelineLayout final : public PipelineLayoutBase {
 
     size_t GetNumSamplers() const;
     size_t GetNumSampledTextures() const;
-
-    uint32_t GetFirstIndexOffsetConstantBufferSlot() const;
-    uint32_t GetFirstIndexOffsetParameterIndex() const;
-
-    uint32_t GetNumWorkgroupsConstantBufferSlot() const;
-    uint32_t GetNumWorkgroupsParameterIndex() const;
 
   private:
     using PipelineLayoutBase::PipelineLayoutBase;

@@ -40,6 +40,8 @@ class RenderPipeline final : public RenderPipelineBase {
     MaybeError ApplyNow(CommandRecordingContext* commandRecordingContext,
                         const std::array<float, 4>& blendColor);
 
+    bool GetUsesVertexOrInstanceIndex() const;
+
   private:
     RenderPipeline(Device* device, const RenderPipelineDescriptor* descriptor);
     ~RenderPipeline() override;
@@ -61,6 +63,7 @@ class RenderPipeline final : public RenderPipelineBase {
     ComPtr<ID3D11VertexShader> mVertexShader;
     ComPtr<ID3D11PixelShader> mPixelShader;
     ComPtr<ID3D11BlendState> mBlendState;
+    bool mUsesVertexOrInstanceIndex = false;
 };
 
 }  // namespace dawn::native::d3d11

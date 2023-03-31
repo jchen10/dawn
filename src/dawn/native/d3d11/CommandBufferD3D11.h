@@ -19,12 +19,15 @@
 
 namespace dawn::native {
 struct BeginRenderPassCmd;
+struct DispatchCmd;
 }  // namespace dawn::native
 
 namespace dawn::native::d3d11 {
 
 class CommandRecordingContext;
+class ComputePipeline;
 class Device;
+class RenderPipeline;
 
 class CommandBuffer final : public CommandBufferBase {
   public:
@@ -38,6 +41,14 @@ class CommandBuffer final : public CommandBufferBase {
     MaybeError ExecuteComputePass(CommandRecordingContext* commandRecordingContext);
     MaybeError ExecuteRenderPass(BeginRenderPassCmd* renderPass,
                                  CommandRecordingContext* commandRecordingContext);
+
+    MaybeError RecordFirstIndexOffset(RenderPipeline* renderPipeline,
+                                      CommandRecordingContext* commandRecordingContext,
+                                      uint32_t firstVertex,
+                                      uint32_t firstInstance);
+    MaybeError RecordNumWorkgroupsForDispatch(ComputePipeline* computePipeline,
+                                              CommandRecordingContext* commandRecordingContext,
+                                              DispatchCmd* dispatchCmd);
 };
 
 }  // namespace dawn::native::d3d11

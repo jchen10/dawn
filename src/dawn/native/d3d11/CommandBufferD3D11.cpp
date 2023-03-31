@@ -493,6 +493,8 @@ MaybeError CommandBuffer::ExecuteComputePass(CommandRecordingContext* commandRec
 
                 DAWN_TRY(bindGroupTracker.Apply(commandRecordingContext));
 
+                DAWN_TRY(RecordNumWorkgroupsForDispatch(lastPipeline, commandRecordingContext,
+                                                        dispatch));
                 commandRecordingContext->GetD3D11DeviceContext()->Dispatch(dispatch->x, dispatch->y,
                                                                            dispatch->z);
                 bindGroupTracker.AfterDispatch(commandRecordingContext);
@@ -541,8 +543,6 @@ MaybeError CommandBuffer::ExecuteComputePass(CommandRecordingContext* commandRec
             case Command::InsertDebugMarker:
             case Command::PopDebugGroup:
             case Command::PushDebugGroup: {
-                // Due to lack of linux driver support for GL_EXT_debug_marker
-                // extension these functions are skipped.
                 SkipCommand(&mCommands, type);
                 break;
             }
@@ -636,18 +636,20 @@ MaybeError CommandBuffer::ExecuteRenderPass(BeginRenderPassCmd* renderPass,
                 DrawCmd* draw = iter->NextCommand<DrawCmd>();
 
                 DAWN_TRY(bindGroupTracker.Apply(commandRecordingContext));
-
+                DAWN_TRY(RecordFirstIndexOffset(lastPipeline, commandRecordingContext,
+                                                draw->firstVertex, draw->firstInstance));
                 commandRecordingContext->GetD3D11DeviceContext()->DrawInstanced(
                     draw->vertexCount, draw->instanceCount, draw->firstVertex, draw->firstInstance);
+
                 break;
             }
 
             case Command::DrawIndexed: {
                 DrawIndexedCmd* draw = iter->NextCommand<DrawIndexedCmd>();
 
-                // vertexStateBufferBindingTracker.Apply(gl);
                 DAWN_TRY(bindGroupTracker.Apply(commandRecordingContext));
-
+                DAWN_TRY(RecordFirstIndexOffset(lastPipeline, commandRecordingContext,
+                                                draw->baseVertex, draw->firstInstance));
                 commandRecordingContext->GetD3D11DeviceContext()->DrawIndexedInstanced(
                     draw->indexCount, draw->instanceCount, draw->firstIndex, draw->baseVertex,
                     draw->firstInstance);
@@ -658,17 +660,13 @@ MaybeError CommandBuffer::ExecuteRenderPass(BeginRenderPassCmd* renderPass,
             case Command::DrawIndirect: {
                 DrawIndirectCmd* draw = iter->NextCommand<DrawIndirectCmd>();
 
-                // vertexStateBufferBindingTracker.Apply(gl);
                 DAWN_TRY(bindGroupTracker.Apply(commandRecordingContext));
-
                 uint64_t indirectBufferOffset = draw->indirectOffset;
                 Buffer* indirectBuffer = ToBackend(draw->indirectBuffer.Get());
                 ASSERT(indirectBuffer != nullptr);
 
                 commandRecordingContext->GetD3D11DeviceContext()->DrawInstancedIndirect(
                     indirectBuffer->GetD3D11Buffer(), indirectBufferOffset);
-                // TODO(dawn:1705): track usage
-                // indirectBuffer->TrackUsage();
 
                 break;
             }
@@ -676,7 +674,6 @@ MaybeError CommandBuffer::ExecuteRenderPass(BeginRenderPassCmd* renderPass,
             case Command::DrawIndexedIndirect: {
                 DrawIndexedIndirectCmd* draw = iter->NextCommand<DrawIndexedIndirectCmd>();
 
-                // vertexStateBufferBindingTracker.Apply(gl);
                 DAWN_TRY(bindGroupTracker.Apply(commandRecordingContext));
 
                 Buffer* indirectBuffer = ToBackend(draw->indirectBuffer.Get());
@@ -685,16 +682,12 @@ MaybeError CommandBuffer::ExecuteRenderPass(BeginRenderPassCmd* renderPass,
                 commandRecordingContext->GetD3D11DeviceContext()->DrawIndexedInstancedIndirect(
                     indirectBuffer->GetD3D11Buffer(), draw->indirectOffset);
 
-                // TODO(dawn:1705): track usage
-                // indirectBuffer->TrackUsage();
                 break;
             }
 
             case Command::InsertDebugMarker:
             case Command::PopDebugGroup:
             case Command::PushDebugGroup: {
-                // Due to lack of linux driver support for GL_EXT_debug_marker
-                // extension these functions are skipped.
                 SkipCommand(iter, type);
                 break;
             }
@@ -732,9 +725,6 @@ MaybeError CommandBuffer::ExecuteRenderPass(BeginRenderPassCmd* renderPass,
                     ToBackend(cmd->buffer)->GetD3D11Buffer(), indexBufferFormat,
                     indexBufferBaseOffset);
 
-                // TODO(dawn:1705): Track usage
-                // ToBackend(cmd->buffer)->TrackUsage();
-
                 break;
             }
 
@@ -751,8 +741,6 @@ MaybeError CommandBuffer::ExecuteRenderPass(BeginRenderPassCmd* renderPass,
                 commandRecordingContext->GetD3D11DeviceContext()->IASetVertexBuffers(
                     slot, 1, &buffer, &arrayStride, &offset);
 
-                // TODO(dawn:1705): Track usage
-                // ToBackend(cmd->buffer)->TrackUsage();
                 break;
             }
 
@@ -842,6 +830,40 @@ MaybeError CommandBuffer::ExecuteRenderPass(BeginRenderPassCmd* renderPass,
 
     // EndRenderPass should have been called
     UNREACHABLE();
+}
+
+MaybeError CommandBuffer::RecordFirstIndexOffset(RenderPipeline* renderPipeline,
+                                                 CommandRecordingContext* commandRecordingContext,
+                                                 uint32_t firstVertex,
+                                                 uint32_t firstInstance) {
+    if (!renderPipeline->GetUsesVertexOrInstanceIndex()) {
+        // Vertex and instance index are not used in shader, so we don't need to update the uniform
+        // buffer. The original value in the uniform buffer will not be used, so we don't need to
+        // clear it.
+        return {};
+    }
+
+    std::array<uint32_t, 256 / sizeof(uint32_t)> offsets = {
+        firstVertex,
+        firstInstance,
+    };
+    DAWN_TRY(commandRecordingContext->GetUniformBuffer()->WriteBuffer(
+        commandRecordingContext, 0, offsets.data(), sizeof(uint32_t) * offsets.size()));
+    return {};
+}
+
+MaybeError CommandBuffer::RecordNumWorkgroupsForDispatch(
+    ComputePipeline* computePipeline,
+    CommandRecordingContext* commandRecordingContext,
+    DispatchCmd* dispatchCmd) {
+    std::array<uint32_t, 256 / sizeof(uint32_t)> dispatch = {
+        dispatchCmd->x,
+        dispatchCmd->y,
+        dispatchCmd->z,
+    };
+    DAWN_TRY(commandRecordingContext->GetUniformBuffer()->WriteBuffer(
+        commandRecordingContext, 0, dispatch.data(), sizeof(uint32_t) * dispatch.size()));
+    return {};
 }
 
 }  // namespace dawn::native::d3d11

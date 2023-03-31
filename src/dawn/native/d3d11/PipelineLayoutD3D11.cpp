@@ -19,12 +19,6 @@
 #include "dawn/native/d3d11/DeviceD3D11.h"
 
 namespace dawn::native::d3d11 {
-namespace {
-constexpr uint32_t kReservedConstantBufferSlot =
-    D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT - 1;
-constexpr uint32_t kFirstIndexOffsetConstantBufferSlot = kReservedConstantBufferSlot;
-constexpr uint32_t kNumWorkgroupConstantBufferSlots = kReservedConstantBufferSlot;
-}  // namespace
 
 // static
 ResultOrError<Ref<PipelineLayout>> PipelineLayout::Create(
@@ -96,14 +90,6 @@ size_t PipelineLayout::GetNumSamplers() const {
 
 size_t PipelineLayout::GetNumSampledTextures() const {
     return mNumSampledTextures;
-}
-
-uint32_t PipelineLayout::GetFirstIndexOffsetConstantBufferSlot() const {
-    return kFirstIndexOffsetConstantBufferSlot;
-}
-
-uint32_t PipelineLayout::GetNumWorkgroupsConstantBufferSlot() const {
-    return kNumWorkgroupConstantBufferSlots;
 }
 
 }  // namespace dawn::native::d3d11

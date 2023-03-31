@@ -93,7 +93,7 @@ ResultOrError<CommandRecordingContext*> Device::GetPendingCommandContext(
     // Callers of GetPendingCommandList do so to record commands. Only reserve a command
     // allocator when it is needed so we don't submit empty command lists
     if (!mPendingCommands.IsOpen()) {
-        DAWN_TRY(mPendingCommands.Open(mD3d11Device5.Get()));
+        DAWN_TRY(mPendingCommands.Open(this));
     }
     if (submitMode == Device::SubmitMode::Normal) {
         mPendingCommands.SetNeedsSubmit();

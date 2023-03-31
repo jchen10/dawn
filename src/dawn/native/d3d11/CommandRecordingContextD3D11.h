@@ -15,13 +15,14 @@
 #define SRC_DAWN_NATIVE_D3D11_COMMANDRECORDINGCONTEXT_D3D11_H_
 
 #include <set>
-#include <vector>
 
+#include "dawn/common/RefCounted.h"
 #include "dawn/native/Error.h"
 #include "dawn/native/IntegerTypes.h"
 #include "dawn/native/d3d/d3d_platform.h"
 
 namespace dawn::native::d3d11 {
+class Buffer;
 class CommandAllocatorManager;
 class Device;
 class Texture;
@@ -29,7 +30,7 @@ class Texture;
 class CommandRecordingContext {
   public:
     void AddToSharedTextureList(Texture* texture);
-    MaybeError Open(ID3D11Device* d3d11Device);
+    MaybeError Open(Device* device);
 
     void Release();
     bool IsOpen() const;
@@ -42,6 +43,7 @@ class CommandRecordingContext {
     ID3D11DeviceContext* GetD3D11DeviceContext() const;
     ID3D11DeviceContext1* GetD3D11DeviceContext1() const;
     ID3D11DeviceContext4* GetD3D11DeviceContext4() const;
+    Buffer* GetUniformBuffer() const;
 
   private:
     bool mIsOpen = false;
@@ -49,6 +51,8 @@ class CommandRecordingContext {
     std::set<Texture*> mSharedTextures;
     ComPtr<ID3D11Device> mD3D11Device;
     ComPtr<ID3D11DeviceContext4> mD3D11DeviceContext4;
+    // The uniform buffer for built in variables.
+    Ref<Buffer> mUniformBuffer;
 };
 
 }  // namespace dawn::native::d3d11

@@ -241,6 +241,10 @@ MaybeError RenderPipeline::ApplyNow(CommandRecordingContext* commandRecordingCon
     return {};
 }
 
+bool RenderPipeline::GetUsesVertexOrInstanceIndex() const {
+    return mUsesVertexOrInstanceIndex;
+}
+
 void RenderPipeline::DestroyImpl() {
     RenderPipelineBase::DestroyImpl();
 }
@@ -362,6 +366,8 @@ MaybeError RenderPipeline::InitializeShaders() {
                                   shaderBlob.Data(), shaderBlob.Size(), nullptr, &mVertexShader),
                               "D3D11 create vertex shader"));
         DAWN_TRY(InitializeInputLayout(shaderBlob));
+        mUsesVertexOrInstanceIndex =
+            compiledShader[SingleShaderStage::Vertex].usesVertexOrInstanceIndex;
     }
 
     if (GetStageMask() & wgpu::ShaderStage::Fragment) {
