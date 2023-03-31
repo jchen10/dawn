@@ -21,6 +21,8 @@
 
 namespace dawn::native::d3d {
 
+struct ExternalImageDescriptorDXGISharedHandle;
+class ExternalImageDXGIImpl;
 class PlatformFunctions;
 
 class Device : public DeviceBase {
@@ -29,6 +31,9 @@ class Device : public DeviceBase {
            const DeviceDescriptor* descriptor,
            const TogglesState& deviceToggles);
     ~Device() override;
+
+    virtual std::unique_ptr<ExternalImageDXGIImpl> CreateExternalImageDXGIImpl(
+        const ExternalImageDescriptorDXGISharedHandle* descriptor) = 0;
 
     const PlatformFunctions* GetFunctions() const;
     ComPtr<IDXGIFactory4> GetFactory() const;

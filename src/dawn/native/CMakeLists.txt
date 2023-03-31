@@ -253,6 +253,7 @@ endif()
 
 if (DAWN_ENABLE_D3D11 OR DAWN_ENABLE_D3D12)
     target_sources(dawn_native PRIVATE
+        "${DAWN_INCLUDE_DIR}/dawn/native/D3D12Backend.h"
         "d3d/AdapterD3D.cpp"
         "d3d/AdapterD3D.h"
         "d3d/BackendD3D.cpp"
@@ -264,6 +265,8 @@ if (DAWN_ENABLE_D3D11 OR DAWN_ENABLE_D3D12)
         "d3d/D3DError.h"
         "d3d/DeviceD3D.cpp"
         "d3d/DeviceD3D.h"
+        "d3d/ExternalImageDXGIImpl.cpp"
+        "d3d/ExternalImageDXGIImpl.h"
         "d3d/Forward.h"
         "d3d/PlatformFunctions.cpp"
         "d3d/PlatformFunctions.h"
@@ -299,6 +302,10 @@ if (DAWN_ENABLE_D3D11)
         "d3d11/D3D11Info.h"
         "d3d11/DeviceD3D11.cpp"
         "d3d11/DeviceD3D11.h"
+        "d3d11/ExternalImageDXGIImplD3D11.cpp"
+        "d3d11/ExternalImageDXGIImplD3D11.h"
+        "d3d11/FenceD3D11.cpp"
+        "d3d11/FenceD3D11.h"
         "d3d11/PipelineLayoutD3D11.cpp"
         "d3d11/PipelineLayoutD3D11.h"
         "d3d11/PlatformFunctionsD3D11.cpp"

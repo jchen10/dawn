@@ -20,13 +20,7 @@
 #include <utility>
 
 #include "dawn/native/d3d/d3d_platform.h"
+#include "dawn/native/d3d11/DeviceD3D11.h"
+#include "dawn/native/d3d11/Forward.h"
 
-namespace dawn::native::d3d11 {
-
-AdapterDiscoveryOptions::AdapterDiscoveryOptions()
-    : AdapterDiscoveryOptionsBase(WGPUBackendType_D3D11), dxgiAdapter(nullptr) {}
-
-AdapterDiscoveryOptions::AdapterDiscoveryOptions(ComPtr<IDXGIAdapter> adapter)
-    : AdapterDiscoveryOptionsBase(WGPUBackendType_D3D11), dxgiAdapter(std::move(adapter)) {}
-
-}  // namespace dawn::native::d3d11
+namespace dawn::native::d3d11 {}  // namespace dawn::native::d3d11

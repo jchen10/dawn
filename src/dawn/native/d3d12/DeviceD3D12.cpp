@@ -32,7 +32,7 @@
 #include "dawn/native/d3d12/CommandBufferD3D12.h"
 #include "dawn/native/d3d12/ComputePipelineD3D12.h"
 #include "dawn/native/d3d12/D3D11on12Util.h"
-#include "dawn/native/d3d12/ExternalImageDXGIImpl.h"
+#include "dawn/native/d3d12/ExternalImageDXGIImplD3D12.h"
 #include "dawn/native/d3d12/PipelineLayoutD3D12.h"
 #include "dawn/native/d3d12/PlatformFunctionsD3D12.h"
 #include "dawn/native/d3d12/QuerySetD3D12.h"
@@ -548,8 +548,8 @@ ResultOrError<ResourceHeapAllocation> Device::AllocateMemory(
                                                      forceAllocateAsCommittedResource);
 }
 
-std::unique_ptr<ExternalImageDXGIImpl> Device::CreateExternalImageDXGIImpl(
-    const ExternalImageDescriptorDXGISharedHandle* descriptor) {
+std::unique_ptr<d3d::ExternalImageDXGIImpl> Device::CreateExternalImageDXGIImpl(
+    const d3d::ExternalImageDescriptorDXGISharedHandle* descriptor) {
     // ExternalImageDXGIImpl holds a weak reference to the device. If the device is destroyed before
     // the image is created, the image will have a dangling reference to the device which can cause
     // a use-after-free.
@@ -732,7 +732,7 @@ void Device::DestroyImpl() {
     ASSERT(GetState() == State::Disconnected);
 
     while (!mExternalImageList.empty()) {
-        ExternalImageDXGIImpl* externalImage = mExternalImageList.head()->value();
+        d3d::ExternalImageDXGIImpl* externalImage = mExternalImageList.head()->value();
         // ExternalImageDXGIImpl::Destroy() calls RemoveFromList().
         externalImage->Destroy();
     }

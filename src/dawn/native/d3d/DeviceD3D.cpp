@@ -16,6 +16,7 @@
 
 #include "dawn/native/d3d/AdapterD3D.h"
 #include "dawn/native/d3d/BackendD3D.h"
+#include "dawn/native/d3d/ExternalImageDXGIImpl.h"
 #include "dawn/native/d3d/Forward.h"
 
 namespace dawn::native::d3d {

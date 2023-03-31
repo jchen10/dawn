@@ -26,10 +26,9 @@
 #include "dawn/native/d3d11/TextureD3D11.h"
 
 namespace dawn::native::d3d11 {
-
 class CommandAllocatorManager;
-struct ExternalImageDescriptorDXGISharedHandle;
 class ExternalImageDXGIImpl;
+class Fence;
 class PlatformFunctions;
 class ResidencyManager;
 class ResourceAllocatorManager;
@@ -114,6 +113,14 @@ class Device final : public d3d::Device {
 
     StagingDescriptorAllocator* GetDepthStencilViewAllocator() const;
 
+    HANDLE GetFenceHandle() const;
+
+    Ref<TextureBase> CreateD3D11ExternalTexture(const TextureDescriptor* descriptor,
+                                                ComPtr<ID3D11Resource> d3d11Texture,
+                                                std::vector<Ref<Fence>> waitFences,
+                                                bool isSwapChainTexture,
+                                                bool isInitialized);
+
     uint32_t GetOptimalBytesPerRowAlignment() const override;
     uint64_t GetOptimalBufferToTextureCopyOffsetAlignment() const override;
 
@@ -179,9 +186,13 @@ class Device final : public d3d::Device {
     MaybeError CheckDebugLayerAndGenerateErrors();
     void AppendDebugLayerMessages(ErrorData* error) override;
 
+    std::unique_ptr<d3d::ExternalImageDXGIImpl> CreateExternalImageDXGIImpl(
+        const d3d::ExternalImageDescriptorDXGISharedHandle* descriptor) override;
+
     MaybeError CreateZeroBuffer();
 
     ComPtr<ID3D11Fence> mFence;
+    HANDLE mFenceHandle = nullptr;
     HANDLE mFenceEvent = nullptr;
 
     ResultOrError<ExecutionSerial> CheckAndUpdateCompletedSerials() override;

@@ -32,6 +32,7 @@
 #include "dawn/native/d3d11/BufferD3D11.h"
 #include "dawn/native/d3d11/CommandBufferD3D11.h"
 #include "dawn/native/d3d11/ComputePipelineD3D11.h"
+#include "dawn/native/d3d11/FenceD3D11.h"
 #include "dawn/native/d3d11/PipelineLayoutD3D11.h"
 #include "dawn/native/d3d11/PlatformFunctionsD3D11.h"
 #include "dawn/native/d3d11/QueueD3D11.h"
@@ -65,8 +66,11 @@ MaybeError Device::Initialize(const DeviceDescriptor* descriptor) {
 
     // Create the fence.
     DAWN_TRY(
-        CheckHRESULT(mD3d11Device5->CreateFence(0, D3D11_FENCE_FLAG_NONE, IID_PPV_ARGS(&mFence)),
+        CheckHRESULT(mD3d11Device5->CreateFence(0, D3D11_FENCE_FLAG_SHARED, IID_PPV_ARGS(&mFence)),
                      "D3D11: creating fence"));
+
+    DAWN_TRY(CheckHRESULT(mFence->CreateSharedHandle(nullptr, GENERIC_ALL, nullptr, &mFenceHandle),
+                          "D3D11: creating fence shared handle"));
 
     // Create the fence event.
     mFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
@@ -398,8 +402,18 @@ void Device::AppendDebugLayerMessages(ErrorData* error) {
     AppendDebugLayerMessagesToError(infoQueue.Get(), totalErrors, error);
 }
 
+std::unique_ptr<d3d::ExternalImageDXGIImpl> Device::CreateExternalImageDXGIImpl(
+    const d3d::ExternalImageDescriptorDXGISharedHandle* descriptor) {
+    return {};
+}
+
 void Device::DestroyImpl() {
     ASSERT(GetState() == State::Disconnected);
+
+    if (mFenceHandle != nullptr) {
+        ::CloseHandle(mFenceHandle);
+        mFenceHandle = nullptr;
+    }
 
     if (mFenceEvent != nullptr) {
         ::CloseHandle(mFenceEvent);
@@ -445,6 +459,25 @@ bool Device::ShouldDuplicateParametersForDrawIndirect(
 
 uint64_t Device::GetBufferCopyOffsetAlignmentForDepthStencil() const {
     return DeviceBase::GetBufferCopyOffsetAlignmentForDepthStencil();
+}
+
+HANDLE Device::GetFenceHandle() const {
+    return mFenceHandle;
+}
+
+Ref<TextureBase> Device::CreateD3D11ExternalTexture(const TextureDescriptor* descriptor,
+                                                    ComPtr<ID3D11Resource> d3d11Texture,
+                                                    std::vector<Ref<Fence>> waitFences,
+                                                    bool isSwapChainTexture,
+                                                    bool isInitialized) {
+    Ref<Texture> dawnTexture;
+    if (ConsumedError(
+            Texture::CreateExternalImage(this, descriptor, std::move(d3d11Texture),
+                                         std::move(waitFences), isSwapChainTexture, isInitialized),
+            &dawnTexture)) {
+        return {};
+    }
+    return dawnTexture;
 }
 
 }  // namespace dawn::native::d3d11

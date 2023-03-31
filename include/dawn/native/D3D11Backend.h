@@ -1,4 +1,4 @@
-// Copyright 2018 The Dawn Authors
+// Copyright 2023 The Dawn Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,19 +16,29 @@
 #define INCLUDE_DAWN_NATIVE_D3D11BACKEND_H_
 
 #include <d3d11.h>
-#include <dxgi.h>
+#include <dxgi1_4.h>
 #include <windows.h>
 #include <wrl/client.h>
 
+#include <memory>
+#include <vector>
+
+#include "dawn/native/D3DBackend.h"
 #include "dawn/native/DawnNative.h"
+
+struct ID3D12Device;
 
 namespace dawn::native::d3d11 {
 
-struct DAWN_NATIVE_EXPORT AdapterDiscoveryOptions : public AdapterDiscoveryOptionsBase {
-    AdapterDiscoveryOptions();
-    explicit AdapterDiscoveryOptions(Microsoft::WRL::ComPtr<IDXGIAdapter> adapter);
+using d3d::ExternalImageDescriptorDXGISharedHandle;
+using d3d::ExternalImageDXGI;
+using d3d::ExternalImageDXGIBeginAccessDescriptor;
+using d3d::ExternalImageDXGIFenceDescriptor;
 
-    Microsoft::WRL::ComPtr<IDXGIAdapter> dxgiAdapter;
+struct AdapterDiscoveryOptions : public d3d::AdapterDiscoveryOptions {
+    AdapterDiscoveryOptions() : d3d::AdapterDiscoveryOptions(WGPUBackendType_D3D11, nullptr) {}
+    explicit AdapterDiscoveryOptions(Microsoft::WRL::ComPtr<IDXGIAdapter> adapter)
+        : d3d::AdapterDiscoveryOptions(WGPUBackendType_D3D11, std::move(adapter)) {}
 };
 
 }  // namespace dawn::native::d3d11

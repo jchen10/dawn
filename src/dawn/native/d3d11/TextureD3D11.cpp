@@ -27,6 +27,7 @@
 #include "dawn/native/d3d/D3DError.h"
 #include "dawn/native/d3d/UtilsD3D.h"
 #include "dawn/native/d3d11/DeviceD3D11.h"
+#include "dawn/native/d3d11/FenceD3D11.h"
 #include "dawn/native/d3d11/Forward.h"
 
 namespace dawn::native::d3d11 {
@@ -71,6 +72,31 @@ ResultOrError<Ref<Texture>> Texture::Create(Device* device, const TextureDescrip
 
     DAWN_TRY(texture->InitializeAsInternalTexture());
     return std::move(texture);
+}
+
+// static
+ResultOrError<Ref<Texture>> Texture::CreateExternalImage(Device* device,
+                                                         const TextureDescriptor* descriptor,
+                                                         ComPtr<ID3D11Resource> d3d11Texture,
+                                                         std::vector<Ref<Fence>> waitFences,
+                                                         bool isSwapChainTexture,
+                                                         bool isInitialized) {
+    Ref<Texture> dawnTexture =
+        AcquireRef(new Texture(device, descriptor, TextureState::OwnedExternal));
+
+    DAWN_TRY(dawnTexture->InitializeAsExternalTexture(std::move(d3d11Texture),
+                                                      std::move(waitFences), isSwapChainTexture));
+
+    // Importing a multi-planar format must be initialized. This is required because
+    // a shared multi-planar format cannot be initialized by Dawn.
+    DAWN_INVALID_IF(
+        !isInitialized && dawnTexture->GetFormat().IsMultiPlanar(),
+        "Cannot create a texture with a multi-planar format (%s) with uninitialized data.",
+        dawnTexture->GetFormat().format);
+
+    dawnTexture->SetIsSubresourceContentInitialized(isInitialized,
+                                                    dawnTexture->GetAllSubresources());
+    return std::move(dawnTexture);
 }
 
 // static
@@ -161,6 +187,16 @@ MaybeError Texture::InitializeAsInternalTexture() {
         DAWN_TRY(
             ClearTexture(commandContext, GetAllSubresources(), TextureBase::ClearValue::NonZero));
     }
+
+    return {};
+}
+
+MaybeError Texture::InitializeAsExternalTexture(ComPtr<ID3D11Resource> d3d11Texture,
+                                                std::vector<Ref<Fence>> waitFences,
+                                                bool isSwapChainTexture) {
+    mD3D11Resource = std::move(d3d11Texture);
+    mWaitFences = std::move(waitFences);
+    SetLabelHelper("Dawn_ExternalTexture");
 
     return {};
 }
@@ -311,6 +347,11 @@ MaybeError Texture::EnsureSubresourceContentInitialized(CommandRecordingContext*
         DAWN_TRY(ClearTexture(commandContext, range, TextureBase::ClearValue::Zero));
     }
     return {};
+}
+
+ResultOrError<ExecutionSerial> Texture::EndAccess() {
+    // TODO: Implement this
+    return ExecutionSerial(0);
 }
 
 // static
