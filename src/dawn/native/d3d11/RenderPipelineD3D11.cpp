@@ -207,6 +207,38 @@ uint32_t D3DColorWriteMask(wgpu::ColorWriteMask colorWriteMask) {
     return d3dColorWriteMask;
 }
 
+D3D11_STENCIL_OP StencilOp(wgpu::StencilOperation op) {
+    switch (op) {
+        case wgpu::StencilOperation::Keep:
+            return D3D11_STENCIL_OP_KEEP;
+        case wgpu::StencilOperation::Zero:
+            return D3D11_STENCIL_OP_ZERO;
+        case wgpu::StencilOperation::Replace:
+            return D3D11_STENCIL_OP_REPLACE;
+        case wgpu::StencilOperation::IncrementClamp:
+            return D3D11_STENCIL_OP_INCR_SAT;
+        case wgpu::StencilOperation::DecrementClamp:
+            return D3D11_STENCIL_OP_DECR_SAT;
+        case wgpu::StencilOperation::Invert:
+            return D3D11_STENCIL_OP_INVERT;
+        case wgpu::StencilOperation::IncrementWrap:
+            return D3D11_STENCIL_OP_INCR;
+        case wgpu::StencilOperation::DecrementWrap:
+            return D3D11_STENCIL_OP_DECR;
+    }
+}
+
+D3D11_DEPTH_STENCILOP_DESC StencilOpDesc(const StencilFaceState& descriptor) {
+    D3D11_DEPTH_STENCILOP_DESC desc = {};
+
+    desc.StencilFailOp = StencilOp(descriptor.failOp);
+    desc.StencilDepthFailOp = StencilOp(descriptor.depthFailOp);
+    desc.StencilPassOp = StencilOp(descriptor.passOp);
+    desc.StencilFunc = ToD3D11ComparisonFunc(descriptor.compare);
+
+    return desc;
+}
+
 }  // namespace
 
 // static
@@ -224,13 +256,16 @@ MaybeError RenderPipeline::Initialize() {
     DAWN_TRY(InitializeRasterizerState());
     DAWN_TRY(InitializeBlendState());
     DAWN_TRY(InitializeShaders());
+    DAWN_TRY(InitializeDepthStencilState());
+
     return {};
 }
 
 RenderPipeline::~RenderPipeline() = default;
 
 MaybeError RenderPipeline::ApplyNow(CommandRecordingContext* commandRecordingContext,
-                                    const std::array<float, 4>& blendColor) {
+                                    const std::array<float, 4>& blendColor,
+                                    uint32_t stencilReference) {
     ID3D11DeviceContext1* d3dDeviceContext1 = commandRecordingContext->GetD3D11DeviceContext1();
     d3dDeviceContext1->IASetPrimitiveTopology(mD3DPrimitiveTopology);
     d3dDeviceContext1->IASetInputLayout(mInputLayout.Get());
@@ -238,6 +273,7 @@ MaybeError RenderPipeline::ApplyNow(CommandRecordingContext* commandRecordingCon
     d3dDeviceContext1->VSSetShader(mVertexShader.Get(), nullptr, 0);
     d3dDeviceContext1->PSSetShader(mPixelShader.Get(), nullptr, 0);
     d3dDeviceContext1->OMSetBlendState(mBlendState.Get(), blendColor.data(), GetSampleMask());
+    d3dDeviceContext1->OMSetDepthStencilState(mDepthStencilState.Get(), stencilReference);
     return {};
 }
 
@@ -320,6 +356,31 @@ MaybeError RenderPipeline::InitializeBlendState() {
 
     DAWN_TRY(CheckHRESULT(device->GetD3D11Device()->CreateBlendState(&blendDesc, &mBlendState),
                           "ID3D11Device::CreateBlendState"));
+    return {};
+}
+
+MaybeError RenderPipeline::InitializeDepthStencilState() {
+    Device* device = ToBackend(GetDevice());
+    const DepthStencilState* state = GetDepthStencilState();
+
+    D3D11_DEPTH_STENCIL_DESC depthStencilDesc = {};
+    depthStencilDesc.DepthEnable =
+        (state->depthCompare == wgpu::CompareFunction::Always && !state->depthWriteEnabled) ? FALSE
+                                                                                            : TRUE;
+    depthStencilDesc.DepthWriteMask =
+        state->depthWriteEnabled ? D3D11_DEPTH_WRITE_MASK_ALL : D3D11_DEPTH_WRITE_MASK_ZERO;
+    depthStencilDesc.DepthFunc = ToD3D11ComparisonFunc(state->depthCompare);
+
+    depthStencilDesc.StencilEnable = StencilTestEnabled(state) ? TRUE : FALSE;
+    depthStencilDesc.StencilReadMask = static_cast<UINT8>(state->stencilReadMask);
+    depthStencilDesc.StencilWriteMask = static_cast<UINT8>(state->stencilWriteMask);
+
+    depthStencilDesc.FrontFace = StencilOpDesc(state->stencilFront);
+    depthStencilDesc.BackFace = StencilOpDesc(state->stencilBack);
+
+    DAWN_TRY(CheckHRESULT(
+        device->GetD3D11Device()->CreateDepthStencilState(&depthStencilDesc, &mDepthStencilState),
+        "ID3D11Device::CreateDepthStencilState"));
     return {};
 }
 

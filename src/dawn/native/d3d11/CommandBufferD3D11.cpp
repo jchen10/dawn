@@ -629,6 +629,7 @@ MaybeError CommandBuffer::ExecuteRenderPass(BeginRenderPassCmd* renderPass,
     RenderPipeline* lastPipeline = nullptr;
     BindGroupTracker bindGroupTracker = {};
     std::array<float, 4> blendColor = {0.0f, 0.0f, 0.0f, 0.0f};
+    uint32_t stencilReference = 0;
 
     auto DoRenderBundleCommand = [&](CommandIterator* iter, Command type) -> MaybeError {
         switch (type) {
@@ -696,7 +697,8 @@ MaybeError CommandBuffer::ExecuteRenderPass(BeginRenderPassCmd* renderPass,
                 SetRenderPipelineCmd* cmd = iter->NextCommand<SetRenderPipelineCmd>();
 
                 lastPipeline = ToBackend(cmd->pipeline).Get();
-                DAWN_TRY(lastPipeline->ApplyNow(commandRecordingContext, blendColor));
+                DAWN_TRY(
+                    lastPipeline->ApplyNow(commandRecordingContext, blendColor, stencilReference));
                 bindGroupTracker.OnSetPipeline(lastPipeline);
 
                 break;
@@ -762,9 +764,9 @@ MaybeError CommandBuffer::ExecuteRenderPass(BeginRenderPassCmd* renderPass,
             }
 
             case Command::SetStencilReference: {
-                [[maybe_unused]] SetStencilReferenceCmd* cmd =
-                    mCommands.NextCommand<SetStencilReferenceCmd>();
-                return DAWN_UNIMPLEMENTED_ERROR("SetStencilReference unimplemented");
+                SetStencilReferenceCmd* cmd = mCommands.NextCommand<SetStencilReferenceCmd>();
+                stencilReference = cmd->reference;
+                return {};
             }
 
             case Command::SetViewport: {

@@ -38,7 +38,8 @@ class RenderPipeline final : public RenderPipelineBase {
                                 void* userdata);
 
     MaybeError ApplyNow(CommandRecordingContext* commandRecordingContext,
-                        const std::array<float, 4>& blendColor);
+                        const std::array<float, 4>& blendColor,
+                        uint32_t stencilReference);
 
     bool GetUsesVertexOrInstanceIndex() const;
 
@@ -53,6 +54,7 @@ class RenderPipeline final : public RenderPipelineBase {
     MaybeError InitializeInputLayout(const Blob& vertexShader);
     MaybeError InitializeShaders();
     MaybeError InitializeBlendState();
+    MaybeError InitializeDepthStencilState();
 
     UINT ComputeInputLayout(
         std::array<D3D11_INPUT_ELEMENT_DESC, kMaxVertexAttributes>* inputElementDescriptors);
@@ -63,6 +65,7 @@ class RenderPipeline final : public RenderPipelineBase {
     ComPtr<ID3D11VertexShader> mVertexShader;
     ComPtr<ID3D11PixelShader> mPixelShader;
     ComPtr<ID3D11BlendState> mBlendState;
+    ComPtr<ID3D11DepthStencilState> mDepthStencilState;
     bool mUsesVertexOrInstanceIndex = false;
 };
 
