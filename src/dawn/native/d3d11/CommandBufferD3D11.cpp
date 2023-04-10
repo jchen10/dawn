@@ -375,11 +375,20 @@ MaybeError CommandBuffer::Execute() {
                 uint8_t* pDstData = ToBackend(dst.buffer)->GetStagingBufferPointer() + dst.offset;
                 uint8_t* pSrcData = reinterpret_cast<uint8_t*>(mappedResource.pData);
 
+                int64_t dstRemainingBytes = static_cast<int64_t>(dst.buffer->GetAllocatedSize());
+                if (static_cast<int64_t>(dst.offset) >= dstRemainingBytes) {
+                    break;
+                }
+                dstRemainingBytes -= dst.offset;
                 uint32_t memcpySize =
                     D3D11TextureBytesPerPixel(stagingTextureDesc.Format) * copy->copySize.width;
                 for (uint32_t y = 0; y < copy->copySize.height; ++y) {
+                    if (memcpySize > dstRemainingBytes) {
+                        break;
+                    }
                     memcpy(pDstData, pSrcData, memcpySize);
                     pDstData += dst.bytesPerRow;
+                    dstRemainingBytes -= dst.bytesPerRow;
                     pSrcData += mappedResource.RowPitch;
                 }
 
