@@ -23,6 +23,8 @@ namespace dawn::native::d3d11 {
 
 D3D11_COMPARISON_FUNC ToD3D11ComparisonFunc(wgpu::CompareFunction func);
 
+size_t D3D11TextureBytesPerPixel(DXGI_FORMAT format);
+
 }  // namespace dawn::native::d3d11
 
 #endif  // SRC_DAWN_NATIVE_D3D11_UTILSD3D11_H_
